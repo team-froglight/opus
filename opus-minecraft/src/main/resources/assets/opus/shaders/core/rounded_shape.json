@@ -1,0 +1,20 @@
+{
+  "blend": {"func": "add", "srcrgb": "srcalpha", "dstrgb": "1-srcalpha", "srcalpha": "one", "dstalpha": "1-srcalpha"},
+  "vertex": "opus:rounded_shape",
+  "fragment": "opus:rounded_shape",
+  "attributes": ["Position", "UV0"],
+  "samplers": [],
+  "uniforms": [
+    {"name": "ModelViewMat", "type": "matrix4x4", "count": 16, "values": [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]},
+    {"name": "ProjMat", "type": "matrix4x4", "count": 16, "values": [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]},
+    {"name": "ColorModulator", "type": "float", "count": 4, "values": [1, 1, 1, 1]},
+    {"name": "ShapeSize", "type": "float", "count": 2, "values": [1, 1]},
+    {"name": "CornerRadii", "type": "float", "count": 4, "values": [0, 0, 0, 0]},
+    {"name": "FillColor", "type": "float", "count": 4, "values": [1, 1, 1, 1]},
+    {"name": "EdgeColor", "type": "float", "count": 4, "values": [0, 0, 0, 0]},
+    {"name": "StrokeWidth", "type": "float", "count": 1, "values": [0]},
+    {"name": "ShadowBlur", "type": "float", "count": 1, "values": [0]},
+    {"name": "Cutout", "type": "float", "count": 4, "values": [0, 0, 0, 0]},
+    {"name": "HasCutout", "type": "int", "count": 1, "values": [0]}
+  ]
+}

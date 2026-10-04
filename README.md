@@ -242,6 +242,12 @@ $env:JAVA_TOOL_OPTIONS += ' "-Djdk.net.unixdomain.tmpdir=' + $socketDirectory + 
 .\gradlew.bat :opus-core:test :opus-yoga:test :opus-minecraft:test :opus-showcase:build
 ```
 
+## Continuous integration
+
+[GitHub Actions](https://github.com/team-froglight/opus/actions/workflows/ci.yml) builds every module and runs the test suites on Linux, Windows and macOS with Java 21 for pushes, pull requests and manual runs. This includes the animation, input, font and native Yoga tests. Linux installs DejaVu Sans so font tests have a known font available.
+
+Each run saves HTML/XML test reports for 14 days, including reports from failed builds. Successful Linux builds also provide an `opus-jars` download containing the library and showcase JARs. Actions are pinned to specific commits, the Gradle wrapper is validated, and pull requests use read-only dependency caches. These checks are headless; visual rendering and physical touchpad behavior still need a running client.
+
 ## API migration
 
 This is a source-breaking pre-release cleanup. Update imports and rebuild consumers; old binary names are not retained. See [MIGRATION.md](MIGRATION.md).

@@ -272,7 +272,8 @@ public class UiRenderer {
             case "TextField", "TextArea", "NumberField", "DateField" -> inputs.draw(node, g, hoverContentX, hoverContentY, scrollY);
             case "Icon" -> {
                 if (node.getProps().get("icon") instanceof opus.core.PixelIcon icon)
-                    PixelIconRenderer.draw(g, icon, x + w / 2f, y + h / 2f, intProp(node, "color", node.getTheme().getColors().getOnSurface()));
+                    PixelIconRenderer.draw(g, icon, x + w / 2f, y + h / 2f,
+                        intProp(node, "color", node.getTheme().getColors().getOnSurface()), opus.core.PixelIcon.scaleForSize(w, h));
             }
             case "Text" -> {
                 // Yoga reserves padding in the node's measured size; draw the
@@ -325,7 +326,7 @@ public class UiRenderer {
                     PixelIconRenderer.draw(g, icon, x + w / 2f, y + h / 2f,
                         enabled ? node.getTheme().getColors().getOnSurface() : 0xFF89939F);
                 } else {
-                    g.drawCenteredString(font, str(node, "text", ""), (int) (x + w / 2), (int) (y + h / 2 - 4),
+                    g.drawCenteredString(font, str(node, "text", ""), (int) (x + w / 2), (int) (y + h / 2 - 4 + opus.core.InputMetrics.TEXT_OFFSET_Y),
                         enabled ? node.getTheme().getColors().getOnSurface() : 0xFF9A9AA5);
                 }
             }

@@ -3,6 +3,16 @@ package opus.core
 import kotlin.test.*
 
 class PixelIconTest {
+    @Test fun iconSizingUsesWholePixelsAndFitsTheSmallerDimension() {
+        assertEquals(1, PixelIcon.scaleForSize(12f, 12f))
+        assertEquals(1, PixelIcon.scaleForSize(16f, 16f))
+        assertEquals(2, PixelIcon.scaleForSize(20f, 20f))
+        assertEquals(1, PixelIcon.scaleForSize(20f, 12f))
+        assertEquals(3, PixelIcon.scaleForSize(28f, 28f))
+        assertFailsWith<IllegalArgumentException> { PixelIcon.scaleForSize(-1f, 20f) }
+        assertFailsWith<IllegalArgumentException> { PixelIcon.scaleForSize(Float.NaN, 20f) }
+    }
+
     @Test fun everySymbolUsesANonemptyDistinctNinePixelGrid() {
         val patterns = PixelIcon.entries.map { icon ->
             (0 until PixelIcon.SIZE).flatMap { y -> (0 until PixelIcon.SIZE).map { x -> icon.pixelAt(x, y) } }

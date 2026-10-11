@@ -30,5 +30,12 @@ enum class PixelIcon(private vararg val rows: String) {
         return rows[y][x] == '#'
     }
 
-    companion object { const val SIZE = 9 }
+    companion object {
+        const val SIZE = 9
+        /** Whole-pixel scale for the allocated box, with the native 9-unit grid as the minimum size. */
+        @JvmStatic fun scaleForSize(width: Float, height: Float): Int {
+            require(width.isFinite() && height.isFinite() && width >= 0f && height >= 0f)
+            return (minOf(width, height) / SIZE).toInt().coerceAtLeast(1)
+        }
+    }
 }

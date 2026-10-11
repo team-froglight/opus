@@ -32,6 +32,12 @@ fun TextField(value: String, onValueChange: (String) -> Unit, label: String,
               modifier: Modifier = Modifier, options: InputOptions = InputOptions(), onSubmit: (() -> Unit)? = null) =
     input("TextField", value, onValueChange, label, modifier, options, 1, onSubmit)
 
+/** A single text editor with a decorative leading icon inside its border, not another focus target. */
+@Composable @JvmOverloads
+fun IconTextField(value: String, onValueChange: (String) -> Unit, label: String, leadingIcon: PixelIcon,
+                  modifier: Modifier = Modifier, options: InputOptions = InputOptions(), onSubmit: (() -> Unit)? = null) =
+    input("TextField", value, onValueChange, label, modifier, options, 1, onSubmit, mapOf("leadingIcon" to leadingIcon))
+
 @Composable @JvmOverloads
 fun TextArea(value: String, onValueChange: (String) -> Unit, label: String,
              modifier: Modifier = Modifier, options: InputOptions = InputOptions(), rows: Int = 4) {
@@ -123,6 +129,14 @@ object DateInput {
 object InputMetrics {
     const val LABEL_HEIGHT = 14f
     const val FIELD_HEIGHT = 28f
+    const val CONTENT_INSET = 8
+    const val ICON_GAP = 7
+    const val TEXT_OFFSET_Y = -1
+    const val TEXT_TOP = 10 + TEXT_OFFSET_Y
+    @JvmStatic fun textInset(hasLeadingIcon: Boolean): Int =
+        CONTENT_INSET + if (hasLeadingIcon) PixelIcon.SIZE + ICON_GAP else 0
+    @JvmStatic fun textWidth(width: Int, hasLeadingIcon: Boolean, hasTrailingControl: Boolean): Int =
+        (width - textInset(hasLeadingIcon) - CONTENT_INSET - if (hasTrailingControl) 24 else 0).coerceAtLeast(8)
     @JvmStatic fun fieldHeight(rows: Int): Float = if (rows <= 1) FIELD_HEIGHT else rows * 9f + 16f
     @JvmStatic fun height(rows: Int, options: InputOptions): Float = LABEL_HEIGHT + fieldHeight(rows) +
         if (options.helperText.isNotEmpty() || options.error != null) 14f else 0f

@@ -14,6 +14,10 @@ object Ui {
                   options: InputOptions = InputOptions(), onSubmit: Runnable? = null) =
         TextField(value, { onChange.accept(it) }, label, modifier, options, onSubmit?.let { { it.run() } })
     @JvmStatic @JvmOverloads
+    fun iconTextField(value: String, onChange: Consumer<String>, label: String, leadingIcon: PixelIcon,
+                      modifier: Modifier = Modifier, options: InputOptions = InputOptions(), onSubmit: Runnable? = null) =
+        IconTextField(value, { onChange.accept(it) }, label, leadingIcon, modifier, options, onSubmit?.let { { it.run() } })
+    @JvmStatic @JvmOverloads
     fun textArea(value: String, onChange: Consumer<String>, label: String, modifier: Modifier = Modifier,
                  options: InputOptions = InputOptions(), rows: Int = 4) =
         TextArea(value, { onChange.accept(it) }, label, modifier, options, rows)

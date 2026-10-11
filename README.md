@@ -111,7 +111,7 @@ Every successful branch push or manual CI run creates a GitHub prerelease such a
 at `01`, uses at least two digits and increments from existing tags. Atomic tag reservation
 handles overlapping builds without overwriting a tag. Interrupted releases can leave gaps.
 Existing tags retain their original names.
-Maven packages and JAR versions use `0.2.2-build.N.A`, after all three platforms pass.
+Maven packages and JAR versions use `0.2.3-build.N.A`, after all three platforms pass.
 `N` is GitHub's increasing workflow run number; `A` is its attempt number,
 so full workflow reruns cannot overwrite previous artifacts. Failed builds and pull requests do not publish.
 An initial job fixes the identity for all builds/publications. Retrying only failed jobs
@@ -233,6 +233,10 @@ TextArea(notes, { notes = it }, "Notes", Modifier.fillMaxWidth(), rows = 4)
 ```
 
 Java uses `Ui.textField(value, onChange, label)`, `Ui.textArea(...)`, `Ui.numberField(...)`, and `Ui.dateField(...)`. Optional overloads accept a modifier and `InputOptions.DEFAULT.withPlaceholder("Your name").withMaxLength(40)`; text and number fields also accept a `Runnable` submit action. Text areas accept a final row count. Place them in a full-width container or give them an explicit width.
+
+Use `IconTextField(value, onValueChange, label, PixelIcon.SEARCH, ...)` in Kotlin or `Ui.iconTextField(value, onChange, label, PixelIcon.SEARCH, ...)` in Java for a leading icon **inside** the editor. It remains one focus target with the same callbacks, constraints, selection, and submit behavior. The 9-unit pixel icon has an 8-unit left inset and a 7-unit gap before the text; placeholder, text, selection, and caret share the same inset. Single-line editor and button text use a one-unit upward optical offset without changing the control bounds.
+
+Standalone `Icon` components use the largest whole-pixel scale fitting their allocated box (minimum 9 units). For example, a 20-unit category icon box draws an 18-unit grid, while a 12-unit box draws the native 9-unit grid. Input and button glyphs retain their compact native size independently of the control's hit area.
 
 `NumberField` keeps a **string draft**, allowing empty text, `-`, and trailing decimal points during editing. It accepts decimal digits, an optional leading minus, and one dot. `NumberInput.parseOrNull(draft)` returns a finite number only when the draft is complete. Validate required values and ranges in your application and pass an explanatory `error`; the component does not silently replace incomplete values with zero.
 

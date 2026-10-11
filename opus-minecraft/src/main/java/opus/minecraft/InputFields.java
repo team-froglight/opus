@@ -92,7 +92,8 @@ final class InputFields {
             }
             entry.datePicker.edit();
         }
-        entry.widget.mouseClicked(x, Math.clamp(y, entry.widget.getY(), entry.widget.getY() + entry.widget.getHeight() - 1), 0);
+        entry.widget.mouseClicked(Math.clamp(x, entry.widget.getX(), entry.widget.getX() + entry.widget.getWidth() - 1),
+            Math.clamp(y, entry.widget.getY(), entry.widget.getY() + entry.widget.getHeight() - 1), 0);
         dragging = true;
         return true;
     }
@@ -166,7 +167,9 @@ final class InputFields {
             x = (int) bounds.getX(); y = (int) bounds.getY(); width = Math.max(24, (int) node.getWidth());
             fieldHeight = (int) InputMetrics.fieldHeight(((Number) node.getProps().get("rows")).intValue());
             boolean multiline = node.getType().equals("TextArea");
-            int innerWidth = Math.max(8, width - (node.getType().equals("DateField") || node.getType().equals("NumberField") ? 40 : 16));
+            boolean leadingIcon = node.getProps().get("leadingIcon") instanceof PixelIcon;
+            int innerWidth = InputMetrics.textWidth(width, leadingIcon,
+                node.getType().equals("DateField") || node.getType().equals("NumberField"));
             if (widget == null || (widget instanceof Area) != multiline) {
                 widget = multiline ? new Area(innerWidth, fieldHeight - 8, Component.literal((String) node.getProps().get("label")))
                     : new Single(innerWidth, Component.literal((String) node.getProps().get("label")));
@@ -174,8 +177,8 @@ final class InputFields {
                 else ((Area) widget).setValueListener(value -> changed(value, true));
                 widget.setFocused(node.getIdentity().equals(focused));
             }
-            widget.setX(x + (multiline ? 4 : 8));
-            widget.setY(y + (int) InputMetrics.LABEL_HEIGHT + (multiline ? 4 : 10));
+            widget.setX(x + (multiline ? 4 : InputMetrics.textInset(leadingIcon)));
+            widget.setY(y + (int) InputMetrics.LABEL_HEIGHT + (multiline ? 4 : InputMetrics.TEXT_TOP));
             widget.setWidth(innerWidth);
             widget.setHeight(multiline ? fieldHeight - 8 : 10);
             widget.active = interactive;
@@ -251,7 +254,12 @@ final class InputFields {
             try {
                 if (options.showsPlaceholder(value(), widget.isFocused())) {
                     if (widget instanceof Area) g.drawWordWrap(font, Component.literal(options.getPlaceholder()), x + 8, boxY + 8, width - 24, 0xFF98A8BB);
-                    else g.drawString(font, font.plainSubstrByWidth(options.getPlaceholder(), widget.getWidth()), x + 8, boxY + 10, 0xFF98A8BB, false);
+                    else g.drawString(font, font.plainSubstrByWidth(options.getPlaceholder(), widget.getWidth()),
+                        widget.getX(), widget.getY(), 0xFF98A8BB, false);
+                }
+                if (node.getProps().get("leadingIcon") instanceof PixelIcon icon) {
+                    PixelIconRenderer.draw(g, icon, x + InputMetrics.CONTENT_INSET + PixelIcon.SIZE / 2f,
+                        boxY + fieldHeight / 2f, options.getEnabled() ? 0xFF98A8BB : 0xFF61748B);
                 }
                 widget.render(g, (int) mouseX, (int) mouseY, 0);
             } finally { g.disableScissor(); }

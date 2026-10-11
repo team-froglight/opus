@@ -3,6 +3,48 @@ package opus.core
 import kotlin.test.*
 
 class TextInputsTest {
+    @Test fun iconFieldKeepsOneEditorAndTheStandardCallbacks() {
+        var changed = ""
+        var submitted = false
+        val options = InputOptions.DEFAULT.withPlaceholder("Name or ID").withMaxLength(96)
+        Ui.compose(Runnable {
+            Ui.iconTextField("", { changed = it }, "Search", PixelIcon.SEARCH,
+                Modifier.width(180f), options, Runnable { submitted = true })
+        }).use { c ->
+            val field = c.root.children.single()
+            assertEquals("TextField", field.type)
+            assertEquals(PixelIcon.SEARCH, field.props["leadingIcon"])
+            assertEquals(options, field.props["inputOptions"])
+            assertEquals(listOf(field), FocusNavigation.targets(c.root, VisualTree(c.root)))
+            field.events.textChange!!.accept("stone")
+            field.events.submit!!.run()
+            assertEquals("stone", changed)
+            assertTrue(submitted)
+        }
+    }
+
+    @Test fun inputInsetsReserveTheIconAndTrailingControlsWithoutChangingHeight() {
+        assertEquals(8, InputMetrics.textInset(false))
+        assertEquals(24, InputMetrics.textInset(true))
+        assertEquals(164, InputMetrics.textWidth(180, false, false))
+        assertEquals(148, InputMetrics.textWidth(180, true, false))
+        assertEquals(124, InputMetrics.textWidth(180, true, true))
+        assertEquals(8, InputMetrics.textWidth(24, true, true))
+        assertEquals(-1, InputMetrics.TEXT_OFFSET_Y)
+        assertEquals(9, InputMetrics.TEXT_TOP)
+        assertEquals(42f, InputMetrics.height(1, InputOptions.DEFAULT))
+    }
+
+    @Test fun kotlinIconFieldUsesTheSameControlledEditor() {
+        val draft = mutableStateOf("")
+        setContent { IconTextField(draft.value, { draft.value = it }, "Search", PixelIcon.SEARCH) }.use { c ->
+            val original = c.root.children.single()
+            original.events.textChange!!.accept("diamond")
+            assertEquals("diamond", c.root.children.single().props["value"])
+            assertEquals(original.identity, c.root.children.single().identity)
+        }
+    }
+
     @Test fun placeholdersOnlyAppearInEmptyUnfocusedInputs() {
         val options = InputOptions.DEFAULT.withPlaceholder("Your name")
         assertTrue(options.showsPlaceholder("", false))

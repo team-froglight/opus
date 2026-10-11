@@ -3,6 +3,14 @@ package opus.core
 import kotlin.test.*
 
 class TextInputsTest {
+    @Test fun placeholdersOnlyAppearInEmptyUnfocusedInputs() {
+        val options = InputOptions.DEFAULT.withPlaceholder("Your name")
+        assertTrue(options.showsPlaceholder("", false))
+        assertFalse(options.showsPlaceholder("", true))
+        assertFalse(options.showsPlaceholder("Typed value", false))
+        assertFalse(options.showsPlaceholder("Typed value", true))
+        assertFalse(InputOptions.DEFAULT.showsPlaceholder("", false))
+    }
     @Test fun numberStepsUseExactDecimalsAndRespectBounds() {
         val options = NumberOptions(0.1, 0.0, 1.0)
         assertEquals("0.3", NumberInput.step("0.2", 1, options))

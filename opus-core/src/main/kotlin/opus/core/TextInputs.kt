@@ -22,6 +22,8 @@ data class InputOptions @JvmOverloads constructor(
     fun withReadOnly(value: Boolean) = copy(readOnly = value)
     fun withMaxLength(value: Int) = copy(maxLength = value)
     fun withAccent(value: Int) = copy(accent = value)
+    /** Hints are idle-state guidance, never painted underneath the active caret. */
+    fun showsPlaceholder(value: String, focused: Boolean) = value.isEmpty() && placeholder.isNotEmpty() && !focused
     companion object { @JvmField val DEFAULT = InputOptions() }
 }
 

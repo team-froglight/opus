@@ -64,6 +64,13 @@ object Ui {
                     modifier: Modifier = Modifier, enabled: Boolean = true, accent: Int = LocalTheme.current.colors.accent) =
         ArrowButton(direction, label, { onClick.run() }, modifier, enabled, accent)
     @JvmStatic @JvmOverloads
+    fun icon(icon: PixelIcon, description: String? = null, modifier: Modifier = Modifier.size(12f, 12f),
+             color: Int = LocalTheme.current.colors.onSurface) = Icon(icon, description, modifier, color)
+    @JvmStatic @JvmOverloads
+    fun iconButton(icon: PixelIcon, label: String, onClick: Runnable, modifier: Modifier = Modifier.size(28f, 28f),
+                   enabled: Boolean = true, accent: Int = LocalTheme.current.colors.surface) =
+        IconButton(icon, label, { onClick.run() }, modifier, enabled, accent)
+    @JvmStatic @JvmOverloads
     fun checkbox(checked: Boolean, onChange: Consumer<Boolean>, modifier: Modifier = Modifier, label: String? = null,
                  accent: Int = LocalTheme.current.colors.accent) = Checkbox(checked, { onChange.accept(it) }, modifier, label, accent)
     @JvmStatic @JvmOverloads

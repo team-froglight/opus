@@ -11,6 +11,8 @@ class JavaControlApiTest {
     @Test void completeJavaFacadeCompilesWithoutKotlinCallbacks() {
         try (Composition composition = Ui.compose(() -> {
             Ui.button("button", () -> {}, Modifier.EMPTY, true, 123);
+            Ui.icon(PixelIcon.SEARCH, "Search");
+            Ui.iconButton(PixelIcon.CLOSE, "Close", () -> {});
             Ui.radioButton(false, () -> {});
             Ui.radioGroup(List.of("one"), -1, index -> {});
             Ui.switchControl(false, value -> {});

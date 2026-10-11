@@ -45,7 +45,7 @@ fun Button(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, ena
 
 enum class ArrowDirection { LEFT, RIGHT }
 
-/** A shader-drawn navigation arrow with a descriptive label for host accessibility/tooltip support. */
+/** A pixel-grid navigation arrow with a descriptive label for host accessibility/tooltip support. */
 @Composable
 @JvmOverloads
 fun ArrowButton(direction: ArrowDirection, label: String, onClick: () -> Unit,
@@ -53,14 +53,27 @@ fun ArrowButton(direction: ArrowDirection, label: String, onClick: () -> Unit,
     buttonNode(label, onClick, modifier.size(26f, 24f), enabled, accent, direction)
 }
 
+@Composable @JvmOverloads
+fun Icon(icon: PixelIcon, contentDescription: String? = null, modifier: Modifier = Modifier.size(12f, 12f),
+         color: Int = LocalTheme.current.colors.onSurface) {
+    emit("Icon", modifier, mapOf("icon" to icon, "contentDescription" to contentDescription, "color" to color))
+}
+
+@Composable @JvmOverloads
+fun IconButton(icon: PixelIcon, label: String, onClick: () -> Unit, modifier: Modifier = Modifier.size(28f, 28f),
+               enabled: Boolean = true, accent: Int = LocalTheme.current.colors.surface) {
+    require(label.isNotBlank()) { "IconButton requires a descriptive label" }
+    Tooltip(label) { buttonNode(label, onClick, modifier, enabled, accent, null, icon) }
+}
+
 private fun buttonNode(text: String, onClick: () -> Unit, modifier: Modifier, enabled: Boolean,
-                       accent: Int, arrow: ArrowDirection?) {
+                       accent: Int, arrow: ArrowDirection?, icon: PixelIcon? = null) {
     val composer = Composition.currentComposer ?: error("Button outside composition")
     composer.startGroup("Button")
     try {
         val color = animateColor(if (enabled) accent else 0xFF3A3A44.toInt(), 160)
         emit("Button", modifier.padding(horizontal = 12f, vertical = 6f).clickable(onClick),
-            mapOf("text" to text, "enabled" to enabled, "accent" to color, "arrowDirection" to arrow))
+            mapOf("text" to text, "enabled" to enabled, "accent" to color, "arrowDirection" to arrow, "icon" to icon))
     } finally { composer.endGroup() }
 }
 

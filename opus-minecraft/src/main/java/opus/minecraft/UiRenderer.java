@@ -270,6 +270,10 @@ public class UiRenderer {
                              float radius, Padding padding, float scrollY) {
         switch (node.getType()) {
             case "TextField", "TextArea", "NumberField", "DateField" -> inputs.draw(node, g, hoverContentX, hoverContentY, scrollY);
+            case "Icon" -> {
+                if (node.getProps().get("icon") instanceof opus.core.PixelIcon icon)
+                    PixelIconRenderer.draw(g, icon, x + w / 2f, y + h / 2f, intProp(node, "color", node.getTheme().getColors().getOnSurface()));
+            }
             case "Text" -> {
                 // Yoga reserves padding in the node's measured size; draw the
                 // glyphs inside it so section spacing appears before headings.
@@ -314,12 +318,12 @@ public class UiRenderer {
                 int bgc = brighten(accent, Math.round(18f * hover));
                 ShapeRenderer.rounded(g, x, y, w, Math.max(h, 24f), radius, radius, radius, radius, bgc);
                 if (node.getProps().get("arrowDirection") instanceof opus.core.ArrowDirection direction) {
-                    float sign = direction == opus.core.ArrowDirection.LEFT ? -1f : 1f;
                     float cx = x + w / 2f, cy = y + h / 2f;
                     int color = enabled ? node.getTheme().getColors().getOnSurface() : 0xFF89939F;
-                    ShapeRenderer.line(g, cx - sign * 5, cy, cx + sign * 5, cy, 1.6f, color);
-                    ShapeRenderer.line(g, cx + sign, cy - 4, cx + sign * 5, cy, 1.6f, color);
-                    ShapeRenderer.line(g, cx + sign * 5, cy, cx + sign, cy + 4, 1.6f, color);
+                    PixelIconRenderer.draw(g, direction == opus.core.ArrowDirection.LEFT ? opus.core.PixelIcon.ARROW_LEFT : opus.core.PixelIcon.ARROW_RIGHT, cx, cy, color);
+                } else if (node.getProps().get("icon") instanceof opus.core.PixelIcon icon) {
+                    PixelIconRenderer.draw(g, icon, x + w / 2f, y + h / 2f,
+                        enabled ? node.getTheme().getColors().getOnSurface() : 0xFF89939F);
                 } else {
                     g.drawCenteredString(font, str(node, "text", ""), (int) (x + w / 2), (int) (y + h / 2 - 4),
                         enabled ? node.getTheme().getColors().getOnSurface() : 0xFF9A9AA5);
@@ -436,8 +440,9 @@ public class UiRenderer {
                 g.drawCenteredString(font, next, (int) (x + w - actionWidth / 2f), labelY, page < count - 1 ? node.getTheme().getColors().getOnSurface() : 0xFF6F7D8D);
             }
             case "Accordion" -> {
-                g.drawString(font, (bool(node, "expanded", false) ? "v " : "> ") + str(node, "title", ""),
-                    (int) x, (int) y + 2, 0xFFFFFFFF, false);
+                PixelIconRenderer.draw(g, bool(node, "expanded", false) ? opus.core.PixelIcon.CHEVRON_DOWN : opus.core.PixelIcon.CHEVRON_RIGHT,
+                    x + 5, y + 7, node.getTheme().getColors().getOnSurface());
+                g.drawString(font, str(node, "title", ""), (int) x + 16, (int) y + 2, node.getTheme().getColors().getOnSurface(), false);
             }
             case "Dropdown" -> {
                             List<String> options = node.getOptions();
@@ -451,9 +456,8 @@ public class UiRenderer {
                 g.drawString(font, font.plainSubstrByWidth(current, Math.max(0, (int) w - 32)),
                     (int) x + 9, (int) (y + (header - font.lineHeight) / 2), node.getTheme().getColors().getOnSurface(), false);
                 float arrowY = y + header / 2;
-                float direction = 1f - 2f * progress;
-                ShapeRenderer.line(g, x + w - 17, arrowY - direction * 1.5f, x + w - 14, arrowY + direction * 1.5f, 1.3f, 0xFFB5C3D1);
-                ShapeRenderer.line(g, x + w - 14, arrowY + direction * 1.5f, x + w - 11, arrowY - direction * 1.5f, 1.3f, 0xFFB5C3D1);
+                PixelIconRenderer.draw(g, expanded ? opus.core.PixelIcon.CHEVRON_UP : opus.core.PixelIcon.CHEVRON_DOWN,
+                    x + w - 14, arrowY, 0xFFB5C3D1);
                 if (progress > 0 && options != null) {
                     float menuY = y + header + DropdownMetrics.MENU_GAP;
                     float menuH = DropdownMetrics.menuHeight(options.size());
@@ -496,8 +500,7 @@ public class UiRenderer {
     }
 
     private static void drawCheck(GuiGraphics g, float x, float y) {
-        ShapeRenderer.line(g, x + 4, y + 7, x + 6, y + 9, 1.6f, 0xFFFFFFFF);
-        ShapeRenderer.line(g, x + 6, y + 9, x + 10, y + 5, 1.6f, 0xFFFFFFFF);
+        PixelIconRenderer.draw(g, opus.core.PixelIcon.CHECK, x + 7, y + 7, 0xFFFFFFFF);
     }
 
     // ---- Input ----

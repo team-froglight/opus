@@ -79,7 +79,8 @@ final class DatePicker {
         arrow(g, x + 16, y + 14, -1); arrow(g, x + width - 16, y + 14, 1);
         float cell = (width - 16) / 7f;
         for (int i = 0; i < 7; i++) {
-            String label = java.time.DayOfWeek.of(i + 1).getDisplayName(java.time.format.TextStyle.SHORT, Locale.getDefault());
+            String label = java.time.DayOfWeek.of(i + 1).getDisplayName(java.time.format.TextStyle.SHORT,
+                (Locale) node.getProps().getOrDefault("locale", Locale.ROOT));
             label = font.plainSubstrByWidth(label, Math.max(1, (int) cell - 4));
             g.drawString(font, label, (int) (x + 8 + i * cell + (cell - font.width(label)) / 2), (int) y + 32, 0xFF98A8BB, false);
         }
@@ -99,14 +100,10 @@ final class DatePicker {
     }
 
     static void icon(GuiGraphics g, float x, float y, int color) {
-        ShapeRenderer.border(g, x, y + 2, 12, 11, 2, 1, color, null, null);
-        ShapeRenderer.line(g, x, y + 6, x + 12, y + 6, 1, color);
-        ShapeRenderer.line(g, x + 3, y, x + 3, y + 4, 1.3f, color);
-        ShapeRenderer.line(g, x + 9, y, x + 9, y + 4, 1.3f, color);
+        PixelIconRenderer.draw(g, opus.core.PixelIcon.CALENDAR, x + 6, y + 6, color);
     }
     private static void arrow(GuiGraphics g, float x, float y, int direction) {
-        ShapeRenderer.line(g, x - direction * 2, y - 3, x + direction * 2, y, 1.4f, 0xFFEAF0F7);
-        ShapeRenderer.line(g, x + direction * 2, y, x - direction * 2, y + 3, 1.4f, 0xFFEAF0F7);
+        PixelIconRenderer.draw(g, direction < 0 ? opus.core.PixelIcon.CHEVRON_LEFT : opus.core.PixelIcon.CHEVRON_RIGHT, x, y, 0xFFEAF0F7);
     }
     private static <T> void call(java.util.function.Consumer<T> callback, T value) {
         if (callback != null) callback.accept(value);

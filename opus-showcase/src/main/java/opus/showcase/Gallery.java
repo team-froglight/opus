@@ -81,6 +81,11 @@ public final class Gallery {
     public static Function0<Unit> content() { return block(Gallery::renderGallery); }
 
     private static void renderGallery() {
+        Ui.theme(new opus.core.Theme(new opus.core.Colors(SURFACE_RAISED, FOREGROUND, theme().accent()),
+            new opus.core.Shapes(4f), new opus.core.Typography(24f, 18f, 14f, 11f, 9f)), Gallery::renderGalleryContent);
+    }
+
+    private static void renderGalleryContent() {
         Layouts.Column(Modifiers.padding(fullWidth(), 16f), block(() -> {
             header();
             gap(12f);
@@ -115,9 +120,7 @@ public final class Gallery {
                 text("Component gallery", TextRole.LABEL, MUTED);
             }));
             Layouts.Column(Modifier.Companion, block(() -> {
-                gap(3f);
-                text("LIVE PREVIEW", TextRole.LABEL, theme().accent());
-                gap(5f);
+                gap(14f);
                 text("NeoForge 1.21.1", TextRole.LABEL, MUTED);
             }));
         }));

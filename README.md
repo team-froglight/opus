@@ -80,19 +80,21 @@ public final class ClientMod {
 
 ## Maven package
 
-The `0.2.1` release targets Java 21, Minecraft 1.21.1 and NeoForge 21.1. The registry is
+Opus targets Java 21, Minecraft 1.21.1 and NeoForge 21.1. The registry is
 `https://maven.pkg.github.com/team-froglight/opus`. Configure `gpr.user` and `gpr.key` in
 your user-level Gradle properties (a GitHub token with `read:packages`), or supply
 `GITHUB_ACTOR` and `GITHUB_TOKEN` through your environment. Never commit credentials.
 
 ```groovy
 dependencies {
-    implementation 'me.methodial.opus:opus-neoforge:0.2.1'
+    implementation 'me.methodial.opus:opus-neoforge:0.2.1-build.11.1'
 }
 ```
 
 This entry point transitively exposes `opus-minecraft`, `opus-yoga` and `opus-core`.
-Portable consumers can depend directly on `opus-core`. `opus-catalog:0.2.1` is a published
+The example pins a published prerelease; adopt a newer build by copying its exact Maven version
+from the GitHub release. Portable consumers can depend directly on `opus-core`. `opus-catalog`
+uses the same version and is a published
 Gradle version catalog for matching Kotlin, Yoga and test dependencies. All library jars
 have explicit module names. Core and Yoga use `FMLModType=LIBRARY`; Minecraft and NeoForge
 adapters use `FMLModType=GAMELIBRARY` so they can read game classes. Yoga bundles natives for
@@ -109,12 +111,17 @@ Every successful branch push or manual CI run creates a GitHub prerelease such a
 at `01`, uses at least two digits and increments from existing tags. Atomic tag reservation
 handles overlapping builds without overwriting a tag. Interrupted releases can leave gaps.
 Existing tags retain their original names.
-Maven packages and JAR versions use `0.2.1-build.N.A`, after all three platforms pass.
+Maven packages and JAR versions use `0.2.2-build.N.A`, after all three platforms pass.
 `N` is GitHub's increasing workflow run number; `A` is its attempt number,
 so full workflow reruns cannot overwrite previous artifacts. Failed builds and pull requests do not publish.
 An initial job fixes the identity for all builds/publications. Retrying only failed jobs
 keeps that identity; use **Re-run all jobs** after an interrupted publication to get a fresh attempt.
 Shop adopts a library release by explicitly updating its `opus_version`.
+
+`PixelIcon` provides a shared 9×9 pixel-grid icon family. Use `Icon`/`Ui.icon` for decoration
+and `IconButton`/`Ui.iconButton` with a nonblank action label for tooltips and keyboard navigation.
+Arrows, checks, dropdowns, calendar controls and gesture hints use the same family. Empty input
+placeholders are hidden while focused; field labels remain visible.
 Local builds keep the base version. To simulate CI, pass `-PciBuildNumber=123 -PciBuildAttempt=1`.
 For a stable Maven release, increment `opus_version`, validate it, then run
 `publishAllPublicationsToGitHubPackagesRepository` with package-write credentials.

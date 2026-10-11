@@ -249,7 +249,7 @@ final class InputFields {
             // Scissor respects both the field and the enclosing scrolled screen.
             g.enableScissor(x + 3, boxY + 3, x + width - 3, boxY + fieldHeight - 3);
             try {
-                if (value().isEmpty() && !options.getPlaceholder().isEmpty()) {
+                if (options.showsPlaceholder(value(), widget.isFocused())) {
                     if (widget instanceof Area) g.drawWordWrap(font, Component.literal(options.getPlaceholder()), x + 8, boxY + 8, width - 24, 0xFF98A8BB);
                     else g.drawString(font, font.plainSubstrByWidth(options.getPlaceholder(), widget.getWidth()), x + 8, boxY + 10, 0xFF98A8BB, false);
                 }
@@ -270,9 +270,7 @@ final class InputFields {
                     boolean available = stepped(direction) != null;
                     boolean over = mouseX >= left && mouseX <= x + width && Math.abs(mouseY - cy) < fieldHeight / 4f;
                     int color = !available ? 0xFF61748B : over ? options.getAccent() : 0xFFEAF0F7;
-                    float cx = left + 14;
-                    ShapeRenderer.line(g, cx - 3, cy + direction * 1.5f, cx, cy - direction * 1.5f, 1.4f, color);
-                    ShapeRenderer.line(g, cx, cy - direction * 1.5f, cx + 3, cy + direction * 1.5f, 1.4f, color);
+                    PixelIconRenderer.draw(g, direction == 1 ? PixelIcon.CHEVRON_UP : PixelIcon.CHEVRON_DOWN, left + 14, cy, color);
                 }
             }
         }

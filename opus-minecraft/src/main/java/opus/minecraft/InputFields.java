@@ -122,7 +122,7 @@ final class InputFields {
         }
         if (key == GLFW.GLFW_KEY_ENTER || key == GLFW.GLFW_KEY_KP_ENTER) {
             if (!(entry.widget instanceof Area)) {
-                if (!entry.options.getReadOnly() && entry.node.getProps().get("onSubmit") instanceof Function0<?> submit) submit.invoke();
+                if (!entry.options.getReadOnly() && entry.node.getEvents().getSubmit() != null) entry.node.getEvents().getSubmit().run();
                 return true;
             }
         }
@@ -185,7 +185,7 @@ final class InputFields {
                     box.setMaxLength(options.getMaxLength());
                     box.setEditable(!options.getReadOnly());
                     ((Single) box).showCaret = interactive && !options.getReadOnly();
-                    box.setTextColor(options.getEnabled() ? 0xFFEAF0F7 : 0xFF98A8BB);
+                    box.setTextColor(options.getEnabled() ? node.getTheme().getColors().getOnSurface() : 0xFF98A8BB);
                     box.setTextColorUneditable(0xFFBAC6D5);
                     box.setFilter(node.getType().equals("NumberField") ? NumberInput::accepts
                         : node.getType().equals("DateField") ? DateInput::accepts : value -> true);
@@ -228,13 +228,12 @@ final class InputFields {
             changed(next, true);
         }
 
-        @SuppressWarnings("unchecked")
-        void changed(String value, boolean record) {
+            void changed(String value, boolean record) {
             if (syncing || value.equals(lastValue)) return;
             if (record) history.record(lastValue);
             lastValue = value;
-            var callback = (Function1<String, Unit>) node.getProps().get("onValueChange");
-            if (callback != null) callback.invoke(value);
+            var callback = node.getEvents().getTextChange();
+            if (callback != null) callback.accept(value);
         }
 
         void draw(GuiGraphics g, double mouseX, double mouseY, float scrollY) {
@@ -243,10 +242,10 @@ final class InputFields {
             int accent = options.getAccent();
             boolean hovered = interactive && mouseX >= x && mouseX <= x + width && mouseY >= boxY && mouseY <= boxY + fieldHeight;
             int border = options.getError() != null ? 0xFFF29A9A : widget.isFocused() ? accent : hovered ? 0xFF61748B : 0xFF435367;
-            ShapeRenderer.border(g, x, boxY, width, fieldHeight, 5, widget.isFocused() ? 1.5f : 1f,
-                border, options.getEnabled() ? 0xFF101924 : 0xFF19212C, null);
+            ShapeRenderer.border(g, x, boxY, width, fieldHeight, node.getTheme().getShapes().getCornerRadius(), widget.isFocused() ? 1.5f : 1f,
+                border, options.getEnabled() ? node.getTheme().getColors().getSurface() : 0xFF19212C, null);
             g.drawString(font, font.plainSubstrByWidth((String) node.getProps().get("label"), width), x, drawY,
-                options.getEnabled() ? 0xFFEAF0F7 : 0xFF98A8BB, false);
+                options.getEnabled() ? node.getTheme().getColors().getOnSurface() : 0xFF98A8BB, false);
             // Scissor respects both the field and the enclosing scrolled screen.
             g.enableScissor(x + 3, boxY + 3, x + width - 3, boxY + fieldHeight - 3);
             try {

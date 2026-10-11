@@ -22,7 +22,11 @@ public class FontMeasurer implements TextMeasurer {
 
     @Override
     public kotlin.Pair<Float, Float> measure(String text, TextRole role, float maxWidth, String fontId) {
-        float size = sizeFor(role);
+        return measure(text, role, maxWidth, fontId, sizeFor(role));
+    }
+
+    @Override
+    public kotlin.Pair<Float, Float> measure(String text, TextRole role, float maxWidth, String fontId, float size) {
         if (Fonts.isCustom(fontId)) {
             String singleLine = text.contains("\n") ? text.substring(0, text.indexOf('\n')) : text;
             float w = Fonts.measure(fontId, singleLine, size, maxWidth);

@@ -15,9 +15,10 @@ dependencies {
     api(project(":opus-core"))
     api(libs.lwjgl.yoga)
     // Yoga is not part of Minecraft's LWJGL distribution.
-    val lwjglVersion = providers.gradleProperty("lwjgl_version").get()
+    val lwjglVersion = libs.versions.lwjgl.get()
     val natives = rootProject.extra["lwjglNatives"] as String
-    runtimeOnly("org.lwjgl:lwjgl-yoga:$lwjglVersion:$natives")
+    // Native resources are bundled below; never publish a dependency on the publisher's host OS.
+    testRuntimeOnly("org.lwjgl:lwjgl-yoga:$lwjglVersion:$natives")
     testRuntimeOnly("org.lwjgl:lwjgl:$lwjglVersion:$natives")
     testImplementation(kotlin("test"))
     testImplementation(platform(libs.junit.bom))
@@ -27,10 +28,10 @@ dependencies {
 }
 
 // Include Yoga's native resources in the library so the same mod artifact works on each desktop OS.
-val bundledNatives by configurations.creating { isTransitive = false }
+val bundledNatives = configurations.create("bundledNatives") { isTransitive = false }
 dependencies {
     for (platform in listOf("windows", "windows-arm64", "linux", "linux-arm64", "macos", "macos-arm64")) {
-        bundledNatives("org.lwjgl:lwjgl-yoga:${providers.gradleProperty("lwjgl_version").get()}:natives-$platform")
+        add(bundledNatives.name, "org.lwjgl:lwjgl-yoga:${libs.versions.lwjgl.get()}:natives-$platform")
     }
 }
 tasks.jar {

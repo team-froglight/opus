@@ -55,7 +55,10 @@ UiScreen.open(() -> {
 });
 ```
 
-The complete Kotlin component surface is also exposed through `Components`, `Layouts`, `Modifiers`, `States` and `Compositions`. `Ui` provides convenient Java callbacks for common controls. See the compiled [Java example](opus-showcase/src/main/java/opus/showcase/CounterExample.java).
+`Ui` exposes layouts, text, inputs, selections, pagination, overlays, media, lists and themes using Java callbacks. `Components` remains the Kotlin/JVM compatibility facade. See the compiled [Java example](opus-showcase/src/main/java/opus/showcase/CounterExample.java).
+
+For a Java screen subclass, call `super()` and override `protected void composeContent()`.
+Composition starts in `init()`, after construction; no mutable callback-holder class is required.
 
 ## NeoForge setup
 
@@ -75,7 +78,61 @@ public final class ClientMod {
 }
 ```
 
-This repository uses local Gradle project dependencies; no published Maven release is assumed. `opus-showcase/build.gradle.kts` is the complete development and packaging example: it includes the library source sets for development, embeds the library jars and Kotlin runtime, and copies `assets/opus` into the consuming mod's resources. Keep the shader assets when packaging your mod.
+## Maven package
+
+The `0.2.0` release targets Java 21, Minecraft 1.21.1 and NeoForge 21.1. The registry is
+`https://maven.pkg.github.com/team-froglight/opus`. Configure `gpr.user` and `gpr.key` in
+your user-level Gradle properties (a GitHub token with `read:packages`), or supply
+`GITHUB_ACTOR` and `GITHUB_TOKEN` through your environment. Never commit credentials.
+
+```groovy
+dependencies {
+    implementation 'me.methodial.opus:opus-neoforge:0.2.0'
+}
+```
+
+This entry point transitively exposes `opus-minecraft`, `opus-yoga` and `opus-core`.
+Portable consumers can depend directly on `opus-core`. `opus-catalog:0.2.0` is a published
+Gradle version catalog for matching Kotlin, Yoga and test dependencies. All library jars
+have explicit module names and `FMLModType=LIBRARY` manifests; Yoga bundles natives for
+Windows, Linux and macOS on x64/ARM64, without a dependency on the publisher's host OS.
+
+When embedding into a mod, include the four libraries, Kotlin stdlib and LWJGL Yoga through
+`jarJar`; copy `assets/opus/**` from the `opus-minecraft` artifact into the mod's resources.
+The [shop build](https://github.com/team-froglight/shop/blob/main/build.gradle) is a consumer
+example. The showcase uses local source sets only for library development.
+
+Publishing is an explicit CI dispatch: run **CI** with **publish=true**. The release job
+publishes all four modules and the catalog only after Windows/Linux/macOS checks succeed.
+Increment `opus_version` for a new release; never overwrite an existing release.
+For offline publication-contract checks, use `publishAllPublicationsToVerificationRepository`
+and point a consumer's `opusRepository` at the generated `build/verification-maven` directory.
+
+## Deterministic control contracts
+
+- Selection indices are zero-based; `-1` means no selection. Other indices must exist.
+  `MultiSelect` indices must all exist. Options and selections are snapshotted when emitted.
+- Pagination requires `pageCount >= 1` and `0 <= page < pageCount`; model an empty result
+  as one empty page. Slider requires finite `min < max` and an in-range finite value.
+  Progress values are finite and clamped to `[0,1]`; list counts cannot be negative.
+- Controls are controlled: callbacks propose a new value; update your state to accept it.
+  Built-ins expose typed `UiNode.events`, `options` and `selectedOptions` to adapters.
+  The raw `props` map remains an extension/compatibility boundary, not a callback API.
+- `Theme`/`Ui.theme` capture their scope on each emitted node. Defaults use its accent and
+  text color; `Text` typography uses the same size for measurement and rendering. Shapes
+  supply button/input corner radii, and `Ui.surface` supplies surface color/radius.
+  Explicit accents, text colors and modifier decoration override defaults. Small native
+  control labels/editor glyphs keep Minecraft's font metrics; typography applies to `Text`.
+  Construct `InputOptions` inside the scope; `InputOptions.DEFAULT` is a prebuilt default.
+- `DateField`/`Ui.dateField` accept `today` and `locale` for deterministic calendars. Defaults
+  sample the host date/locale during composition, never during rendering. Dates use years
+  1–9999 and ISO drafts; their length limit must allow a complete 10-character date.
+- Text inputs normalize line endings and limit the displayed draft in UTF-16 units without
+  splitting surrogate pairs. This does not rewrite caller state. Persisted/imported data
+  should be validated by the application before being passed to an editor.
+
+`0.2.0` preserves Java overloads but Kotlin consumers must rebuild against the new artifact.
+Invalid controls that formerly produced ambiguous rendering now fail during composition.
 
 ## Animations
 
@@ -249,5 +306,9 @@ $env:JAVA_TOOL_OPTIONS += ' "-Djdk.net.unixdomain.tmpdir=' + $socketDirectory + 
 Each run saves HTML/XML test reports for 14 days, including reports from failed builds. Successful Linux builds also provide an `opus-jars` download containing the library and showcase JARs. Actions are pinned to specific commits, the Gradle wrapper is validated, and pull requests use read-only dependency caches. These checks are headless; visual rendering and physical touchpad behavior still need a running client.
 
 ## API migration
+
+`Pagination` accepts optional `previousLabel` and `nextLabel` strings after its modifier.
+Use these to keep page controls in the application's language. Existing Java overloads remain
+available; Kotlin consumers should rebuild when updating the library.
 
 This is a source-breaking pre-release cleanup. Update imports and rebuild consumers; old binary names are not retained. See [MIGRATION.md](MIGRATION.md).

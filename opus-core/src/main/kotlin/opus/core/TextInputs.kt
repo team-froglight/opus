@@ -12,7 +12,7 @@ data class InputOptions @JvmOverloads constructor(
     val enabled: Boolean = true,
     val readOnly: Boolean = false,
     val maxLength: Int = 1024,
-    val accent: Int = 0xFF5DD2BD.toInt()
+    val accent: Int = LocalTheme.current.colors.accent
 ) {
     init { require(maxLength >= 0) { "maxLength must be nonnegative" } }
     fun withPlaceholder(value: String) = copy(placeholder = value)
@@ -78,21 +78,31 @@ object NumberInput {
 /** ISO date draft with a calendar picker. Empty and incomplete values remain editable. */
 @Composable @JvmOverloads
 fun DateField(value: String, onValueChange: (String) -> Unit, label: String,
-              modifier: Modifier = Modifier, options: InputOptions = InputOptions()) {
+              modifier: Modifier = Modifier, options: InputOptions = InputOptions(),
+              today: LocalDate = LocalDate.now(), locale: java.util.Locale = java.util.Locale.getDefault()) {
     require(DateInput.accepts(value)) { "DateField value must be an ISO date draft (yyyy-MM-dd)" }
+    require(options.maxLength >= 10) { "DateField maxLength must be at least 10 for a complete ISO date" }
+    require(today.year in 1..9999) { "DateField today must be in years 1..9999" }
     val composer = Composition.currentComposer ?: error("DateField outside composition")
     composer.startGroup("DateField")
     try {
         val expanded = composer.remember { mutableStateOf(false) }
-        val month = composer.remember { mutableStateOf((DateInput.parseOrNull(value) ?: LocalDate.now()).withDayOfMonth(1)) }
+        val month = composer.remember { mutableStateOf((DateInput.parseOrNull(value) ?: today).withDayOfMonth(1)) }
+        val onExpanded: (Boolean) -> Unit = { open ->
+            if (open) month.value = (DateInput.parseOrNull(value) ?: today).withDayOfMonth(1)
+            expanded.value = open
+        }
+        val onMonth: (LocalDate) -> Unit = { date -> month.value = date.withDayOfMonth(1) }
+        val onDate: (LocalDate) -> Unit = { date ->
+            require(date.year in 1..9999) { "Selected date must be in years 1..9999" }
+            onValueChange(date.toString()); expanded.value = false
+        }
         input("DateField", value, onValueChange, label, modifier, options.copy(maxLength = minOf(10, options.maxLength)), 1, null,
             mapOf("expanded" to (expanded.value && options.enabled && !options.readOnly), "month" to month.value,
-                "onExpandedChange" to { open: Boolean ->
-                    if (open) month.value = (DateInput.parseOrNull(value) ?: LocalDate.now()).withDayOfMonth(1)
-                    expanded.value = open
-                },
-                "onMonthChange" to { date: LocalDate -> month.value = date.withDayOfMonth(1) },
-                "onDateSelect" to { date: LocalDate -> onValueChange(date.toString()); expanded.value = false }))
+                "today" to today, "locale" to locale, "onExpandedChange" to onExpanded,
+                "onMonthChange" to onMonth, "onDateSelect" to onDate,
+                "events" to ControlEvents(expandedChange = java.util.function.Consumer { onExpanded(it) },
+                    monthChange = java.util.function.Consumer { onMonth(it) }, dateSelect = java.util.function.Consumer { onDate(it) })))
     } finally { composer.endGroup() }
 }
 
@@ -120,5 +130,7 @@ private fun input(type: String, value: String, onValueChange: (String) -> Unit, 
                   modifier: Modifier, options: InputOptions, rows: Int, onSubmit: (() -> Unit)?, extra: Map<String, Any?> = emptyMap()) {
     val normalized = if (rows > 1) value.replace("\r\n", "\n").replace('\r', '\n') else value.replace("\r", "").replace("\n", "")
     emit(type, modifier, mapOf("value" to TextEdits.limit(normalized, options.maxLength), "onValueChange" to onValueChange, "label" to label,
-        "inputOptions" to options, "rows" to rows, "enabled" to options.enabled, "onSubmit" to onSubmit) + extra)
+        "inputOptions" to options, "rows" to rows, "enabled" to options.enabled, "onSubmit" to onSubmit) + extra +
+        mapOf("events" to ((extra["events"] as? ControlEvents) ?: ControlEvents()).copy(
+            textChange = java.util.function.Consumer { onValueChange(it) }, submit = onSubmit?.let { Runnable { it() } })))
 }

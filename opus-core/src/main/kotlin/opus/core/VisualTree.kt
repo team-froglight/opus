@@ -19,7 +19,7 @@ class VisualTree(private val root: UiNode) {
         var x = parentX
         var y = parentY
         var alpha = parentAlpha
-        var enabled = parentInput && node.visible
+        var enabled = parentInput && node.visible && node.props["enabled"] != false
         for (element in node.modifier.elements()) when (element) {
             is Offset -> { x += element.x; y += element.y }
             is Opacity -> alpha *= element.alpha

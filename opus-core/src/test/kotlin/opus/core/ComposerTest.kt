@@ -7,6 +7,21 @@ import kotlin.test.assertTrue
 
 class ComposerTest {
     @Test
+    fun failedRecompositionKeepsSubscriptionsSoStateCanRecover() {
+        val value = mutableStateOf("ready")
+        setContent {
+            val text = value.value
+            check(text != "fail")
+            Text(text)
+        }.use { composition ->
+            assertFailsWith<IllegalStateException> { value.value = "fail" }
+            assertEquals("ready", composition.root.findAll("Text").single().props["text"])
+            value.value = "recovered"
+            assertEquals("recovered", composition.root.findAll("Text").single().props["text"])
+        }
+    }
+
+    @Test
     fun emitsTree() {
         val c = setContent {
             Column {

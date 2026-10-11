@@ -3,6 +3,18 @@ package opus.core
 import kotlin.test.*
 
 class FocusNavigationTest {
+    @Test fun disabledContainersBlockDescendantFocusAndClicks() {
+        setContent {
+            emit("Box", props = mapOf("enabled" to false)) { Button("Blocked", {}) }
+            Button("Available", {})
+        }.use { c ->
+            val visuals = VisualTree(c.root)
+            val blocked = c.root.findAll("Button").first()
+            assertFalse(visuals.bounds(blocked)!!.inputEnabled)
+            assertEquals(listOf("Available"), FocusNavigation.targets(c.root, visuals).map { it.props["text"] })
+        }
+    }
+
     @Test fun traversesVisibleEnabledControlsInOrderAndWrapsBothWays() {
         setContent {
             TextField("", {}, "Name")

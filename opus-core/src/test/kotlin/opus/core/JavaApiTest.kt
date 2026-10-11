@@ -5,6 +5,23 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 
 class JavaApiTest {
+    @Test fun paginationSupportsLocalizedLabelsAndExistingOverloads() {
+        val page = Ui.state(0)
+        Ui.compose(Runnable {
+            Pagination(page.value, 3, { page.value = it })
+            Pagination(page.value, 3, { page.value = it }, Modifier, "Раніше", "Далі")
+        }).use { composition ->
+            val controls = composition.root.findAll("Pagination")
+            assertEquals("< Prev", controls[0].props["previousLabel"])
+            assertEquals("Next >", controls[0].props["nextLabel"])
+            assertEquals("Раніше", controls[1].props["previousLabel"])
+            assertEquals("Далі", controls[1].props["nextLabel"])
+            @Suppress("UNCHECKED_CAST")
+            (controls[1].props["onPageChange"] as (Int) -> Unit)(2)
+            assertEquals(listOf(2, 2), composition.root.findAll("Pagination").map { it.props["page"] })
+        }
+    }
+
     @Test fun navigationArrowsKeepLabelsAndDisabledState() {
         Ui.compose(Runnable {
             Ui.arrowButton(ArrowDirection.LEFT, "Previous tab", Runnable {}, Modifier, false)

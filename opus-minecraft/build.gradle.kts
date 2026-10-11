@@ -32,7 +32,7 @@ dependencies {
     testRuntimeOnly(libs.junit.launcher)
     testImplementation("net.java.dev.jna:jna:5.14.0")
     testImplementation("net.java.dev.jna:jna-platform:5.14.0")
-    val lwjglVersion = providers.gradleProperty("lwjgl_version").get()
+    val lwjglVersion = libs.versions.lwjgl.get()
     val natives = rootProject.extra["lwjglNatives"] as String
     // ModDev's game libraries are not automatically on the test compile classpath.
     testImplementation("org.lwjgl:lwjgl:$lwjglVersion")

@@ -18,6 +18,12 @@ interface TextMeasurer {
     fun measure(text: String, role: TextRole, maxWidth: Float): Pair<Float, Float>
     fun measure(text: String, role: TextRole, maxWidth: Float, fontId: String?): Pair<Float, Float> =
         measure(text, role, maxWidth)
+    /** Sized contract. Legacy measurers retain their metrics, scaled from their declared line height. */
+    fun measure(text: String, role: TextRole, maxWidth: Float, fontId: String?, size: Float): Pair<Float, Float> {
+        val scale = size / lineHeight(role)
+        val measured = measure(text, role, maxWidth / scale, fontId)
+        return measured.first * scale to measured.second * scale
+    }
     fun lineHeight(role: TextRole): Float
 }
 
@@ -34,13 +40,15 @@ class YogaTree(private val measurer: TextMeasurer) : AutoCloseable {
     private val handles = java.util.IdentityHashMap<UiNode, Long>()
     private val measureFuncs = mutableListOf<YGMeasureFuncI>()
     private var lastCompositionVersion = -1
+    private var lastRoot: UiNode? = null
     private var lastBuildWidth = Float.NaN
     private var lastW = Float.NaN
     private var lastH = Float.NaN
 
     fun layout(root: UiNode, composition: Composition, width: Float, height: Float) {
-        if (composition.compositionVersion != lastCompositionVersion || width != lastBuildWidth || rootHandle == 0L) {
+        if (root !== lastRoot || composition.compositionVersion != lastCompositionVersion || width != lastBuildWidth || rootHandle == 0L) {
             rebuild(root, width)
+            lastRoot = root
             lastCompositionVersion = composition.compositionVersion
             lastBuildWidth = width
             lastW = Float.NaN // force recalc after structural change
@@ -136,7 +144,8 @@ class YogaTree(private val measurer: TextMeasurer) : AutoCloseable {
         // Reserve gap space before sizing cells; 100% / columns would force
         // the last cell of each row onto the next line when gap is nonzero.
         if (parentType == "Grid") {
-            Yoga.YGNodeStyleSetWidth(h, gridCellWidth ?: 0f)
+            resolvedWidth = gridCellWidth ?: 0f
+            Yoga.YGNodeStyleSetWidth(h, resolvedWidth)
         }
 
         if (node.type in setOf("TextField", "TextArea", "NumberField", "DateField")) {
@@ -159,7 +168,9 @@ class YogaTree(private val measurer: TextMeasurer) : AutoCloseable {
             val cb = YGMeasureFuncI { _, width, widthMode, _, _, out ->
                 val maxW = if (widthMode == Yoga.YGMeasureModeUndefined) Float.MAX_VALUE else width
                 val fid = node.props["fontId"] as? String
-                val (w, hh) = measurer.measure(label, role, maxW, fid)
+                val size = (node.props["textSize"] as? Number)?.toFloat() ?: node.theme.typography.sizeFor(role)
+                val (w, hh) = if (node.type == "Text") measurer.measure(label, role, maxW, fid, size)
+                    else measurer.measure(label, role, maxW, fid)
                 out.width(w)
                 out.height(hh)
             }
@@ -246,5 +257,6 @@ class YogaTree(private val measurer: TextMeasurer) : AutoCloseable {
         }
         handles.clear()
         measureFuncs.clear()
+        lastRoot = null
     }
 }

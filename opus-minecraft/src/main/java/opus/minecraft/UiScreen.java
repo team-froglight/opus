@@ -88,6 +88,15 @@ public class UiScreen extends Screen {
         this.content = content;
     }
 
+    /** Java subclasses override composeContent; no callback holder or Kotlin Unit bridge is needed. */
+    protected UiScreen() {
+        super(Component.literal("Opus"));
+        this.content = () -> { composeContent(); return Unit.INSTANCE; };
+    }
+
+    /** Called after construction by init/recomposition, never from the constructor. */
+    protected void composeContent() {}
+
     /** Java entry point: no Kotlin Unit or Function0 required. */
     public static UiScreen create(Runnable content) {
         return new UiScreen(() -> { content.run(); return Unit.INSTANCE; });

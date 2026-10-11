@@ -92,7 +92,7 @@ dependencies {
     add("additionalRuntimeClasspath", libs.lwjgl.yoga)
     // Yoga natives for dev runs (harmless duplicate if vanilla ever ships them).
     val natives = rootProject.extra["lwjglNatives"] as String
-    add("additionalRuntimeClasspath", "org.lwjgl:lwjgl-yoga:${providers.gradleProperty("lwjgl_version").get()}:$natives")
+    add("additionalRuntimeClasspath", "org.lwjgl:lwjgl-yoga:${libs.versions.lwjgl.get()}:$natives")
 }
 
 // Library assets must also be visible as resources of the consuming mod.

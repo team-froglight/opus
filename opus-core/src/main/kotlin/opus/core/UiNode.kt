@@ -9,6 +9,21 @@ class UiNode(val type: String) {
         internal set
     val children = mutableListOf<UiNode>()
     val props = mutableMapOf<String, Any?>()
+    /** Typed built-in callbacks; raw custom/legacy nodes are adapted at this single boundary. */
+    val events: ControlEvents get() = props["events"] as? ControlEvents ?: ControlEvents.legacy(this)
+    val options: List<String> get() {
+        val value = props["options"] ?: return emptyList()
+        require(value is List<*> && value.all { it is String }) { "$type.options must be a list of strings" }
+        return value.map { it as String }
+    }
+    val selectedOptions: Set<Int> get() {
+        val value = props["selected"] ?: return emptySet()
+        require(value is Set<*> && value.all { it is Int }) { "$type.selected must be a set of indices" }
+        return value.map { it as Int }.toSet()
+    }
+    /** Scope is captured while composing; rendering never consults the thread-local theme. */
+    var theme: Theme = Theme()
+        internal set
     var modifier: Modifier = Modifier
 
     var x: Float = 0f
@@ -46,6 +61,7 @@ fun emit(type: String, modifier: Modifier = Modifier, props: Map<String, Any?> =
     val node = UiNode(type)
     node.identity = composer.nodeIdentity(parent.children.size)
     node.modifier = modifier
+    node.theme = LocalTheme.current
     node.props.putAll(props)
     parent.children += node
     if (content != null) {

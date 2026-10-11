@@ -195,7 +195,7 @@ public class UiRenderer {
         float radius = bg != null && bg.getCornerRadius() != null ? bg.getCornerRadius()
             : border != null && border.getCornerRadius() != null ? border.getCornerRadius()
             : clip != null ? Math.max(Math.max(clip.getTopStart(), clip.getTopEnd()),
-                Math.max(clip.getBottomEnd(), clip.getBottomStart())) : node.getType().equals("Button") ? 5f : 0f;
+                Math.max(clip.getBottomEnd(), clip.getBottomStart())) : node.getType().equals("Button") ? node.getTheme().getShapes().getCornerRadius() : 0f;
 
         ShapeRenderer.Rect notch = cutout == null ? null : notchRect(cutout, x, y, w, h);
 
@@ -278,12 +278,13 @@ public class UiRenderer {
                 String text = str(node, "text", "");
                 TextRole role = (TextRole) node.getProps().get("role");
                 if (role == null) role = TextRole.PARAGRAPH;
-                float scale = FontMeasurer.sizeFor(role) / 9f;
+                float textSize = floatProp(node, "textSize", node.getTheme().getTypography().sizeFor(role));
+                float scale = textSize / 9f;
                 String line = text.contains("\n") ? text.substring(0, text.indexOf('\n')) : text;
                 String fontId = str(node, "fontId", null);
                 int textColor = intProp(node, "color", 0xFFFFFFFF);
                 if (Fonts.isCustom(fontId)
-                    && Fonts.draw(g, fontId, line, textX, textY, FontMeasurer.sizeFor(role), textColor)) {
+                    && Fonts.draw(g, fontId, line, textX, textY, textSize, textColor)) {
                     break;
                 }
                 g.pose().pushPose();
@@ -305,7 +306,7 @@ public class UiRenderer {
             }
             case "Button" -> {
                 boolean enabled = bool(node, "enabled", true);
-                int accent = intProp(node, "accent", 0xFF7C5CFF);
+                int accent = intProp(node, "accent", node.getTheme().getColors().getAccent());
                 boolean hovered = enabled && visuals.bounds(node).getInputEnabled() && hoverContentX >= x && hoverContentX <= x + w && hoverContentY >= y && hoverContentY <= y + h;
                 float hover = node.getIdentity() == null ? (hovered ? 1f : 0f)
                     : hoverFeedback.computeIfAbsent(node.getIdentity(), ignored -> new HoverFeedback())
@@ -315,19 +316,19 @@ public class UiRenderer {
                 if (node.getProps().get("arrowDirection") instanceof opus.core.ArrowDirection direction) {
                     float sign = direction == opus.core.ArrowDirection.LEFT ? -1f : 1f;
                     float cx = x + w / 2f, cy = y + h / 2f;
-                    int color = enabled ? 0xFFEAF0F7 : 0xFF89939F;
+                    int color = enabled ? node.getTheme().getColors().getOnSurface() : 0xFF89939F;
                     ShapeRenderer.line(g, cx - sign * 5, cy, cx + sign * 5, cy, 1.6f, color);
                     ShapeRenderer.line(g, cx + sign, cy - 4, cx + sign * 5, cy, 1.6f, color);
                     ShapeRenderer.line(g, cx + sign * 5, cy, cx + sign, cy + 4, 1.6f, color);
                 } else {
                     g.drawCenteredString(font, str(node, "text", ""), (int) (x + w / 2), (int) (y + h / 2 - 4),
-                        enabled ? 0xFFFFFFFF : 0xFF9A9AA5);
+                        enabled ? node.getTheme().getColors().getOnSurface() : 0xFF9A9AA5);
                 }
             }
             case "Checkbox" -> {
                 boolean checked = bool(node, "checked", false);
-                int accent = intProp(node, "accent", 0xFF7C5CFF);
-                ShapeRenderer.rounded(g, x, y, 14f, 14f, 4f, 4f, 4f, 4f, checked ? accent : 0xFF2A2A35);
+                int accent = intProp(node, "accent", node.getTheme().getColors().getAccent());
+                ShapeRenderer.rounded(g, x, y, 14f, 14f, 4f, 4f, 4f, 4f, checked ? accent : node.getTheme().getColors().getSurface());
                 if (checked) {
                     drawCheck(g, x, y);
                 }
@@ -336,22 +337,21 @@ public class UiRenderer {
             }
             case "RadioButton" -> {
                 boolean selected = bool(node, "selected", false);
-                int accent = intProp(node, "accent", 0xFF7C5CFF);
-                ShapeRenderer.rounded(g, x, y, 14f, 14f, 7f, 7f, 7f, 7f, 0xFF2A2A35);
+                int accent = intProp(node, "accent", node.getTheme().getColors().getAccent());
+                ShapeRenderer.rounded(g, x, y, 14f, 14f, 7f, 7f, 7f, 7f, node.getTheme().getColors().getSurface());
                 if (selected) ShapeRenderer.rounded(g, x + 4, y + 4, 6f, 6f, 3f, 3f, 3f, 3f, accent);
                 String label = str(node, "label", null);
                 if (label != null) g.drawString(font, label, (int) x + 18, (int) y + 3, 0xFFFFFFFF, false);
             }
             case "RadioGroup" -> {
-                @SuppressWarnings("unchecked")
-                List<String> options = (List<String>) node.getProps().get("options");
+                            List<String> options = node.getOptions();
                 int sel = intProp(node, "selectedIndex", 0);
-                int accent = intProp(node, "accent", 0xFF7C5CFF);
+                int accent = intProp(node, "accent", node.getTheme().getColors().getAccent());
                 if (options != null) {
                     for (int i = 0; i < options.size(); i++) {
                         float iy = y + i * 18;
                         boolean s = i == sel;
-                        ShapeRenderer.rounded(g, x, iy, 14f, 14f, 7f, 7f, 7f, 7f, 0xFF2A2A35);
+                        ShapeRenderer.rounded(g, x, iy, 14f, 14f, 7f, 7f, 7f, 7f, node.getTheme().getColors().getSurface());
                         if (s) ShapeRenderer.rounded(g, x + 4, iy + 4, 6f, 6f, 3f, 3f, 3f, 3f, accent);
                         g.drawString(font, options.get(i), (int) x + 18, (int) iy + 3, 0xFFFFFFFF, false);
                     }
@@ -361,7 +361,7 @@ public class UiRenderer {
                 boolean checked = bool(node, "checked", false);
                 float tw = Math.max(w, 34f);
                 float th = 18f;
-                int accent = intProp(node, "accent", 0xFF7C5CFF);
+                int accent = intProp(node, "accent", node.getTheme().getColors().getAccent());
                 int trackColor = intProp(node, "trackColor", checked ? accent : 0xFF3A3A44);
                 ShapeRenderer.rounded(g, x, y, tw, th, 9f, 9f, 9f, 9f, trackColor);
                 float position = Math.max(0f, Math.min(1f, floatProp(node, "position", checked ? 1f : 0f)));
@@ -373,7 +373,7 @@ public class UiRenderer {
                 float max = floatProp(node, "max", 1f);
                 float v = (floatProp(node, "value", min) - min) / Math.max(1e-6f, max - min);
                 v = Math.min(1f, Math.max(0f, v));
-                int accent = intProp(node, "accent", 0xFF7C5CFF);
+                int accent = intProp(node, "accent", node.getTheme().getColors().getAccent());
                 float th = 6f;
                 float cy = y + h / 2;
                 ShapeRenderer.rounded(g, x, cy - th / 2, w, th, 3f, 3f, 3f, 3f, 0xFF3A3A44);
@@ -382,8 +382,8 @@ public class UiRenderer {
             }
             case "ProgressBar" -> {
                 float p = floatProp(node, "progress", 0f);
-                int accent = intProp(node, "accent", 0xFF7C5CFF);
-                ShapeRenderer.rounded(g, x, y, w, Math.max(h, 8f), 4f, 4f, 4f, 4f, 0xFF2A2A35);
+                int accent = intProp(node, "accent", node.getTheme().getColors().getAccent());
+                ShapeRenderer.rounded(g, x, y, w, Math.max(h, 8f), 4f, 4f, 4f, 4f, node.getTheme().getColors().getSurface());
                 ShapeRenderer.rounded(g, x, y, w * p, Math.max(h, 8f), 4f, 4f, 4f, 4f, accent);
             }
             case "Image" -> {
@@ -398,7 +398,7 @@ public class UiRenderer {
                 }
             }
             case "ItemSlot" -> {
-                ShapeRenderer.rounded(g, x, y, Math.max(w, 20f), Math.max(h, 20f), 4f, 4f, 4f, 4f, 0xFF2A2A35);
+                ShapeRenderer.rounded(g, x, y, Math.max(w, 20f), Math.max(h, 20f), 4f, 4f, 4f, 4f, node.getTheme().getColors().getSurface());
                 String itemId = str(node, "itemId", "minecraft:stone");
                 int count = intProp(node, "count", 1);
                 try {
@@ -428,26 +428,28 @@ public class UiRenderer {
                 ShapeRenderer.rounded(g, x, y, actionWidth, h, 4f, 4f, 4f, 4f, 0xFF263444);
                 ShapeRenderer.rounded(g, x + w - actionWidth, y, actionWidth, h, 4f, 4f, 4f, 4f, 0xFF263444);
                 int labelY = (int) (y + h / 2f - 4f);
-                g.drawCenteredString(font, "< Prev", (int) (x + actionWidth / 2f), labelY, page > 0 ? 0xFFEAF0F7 : 0xFF6F7D8D);
+                int labelWidth = Math.max(0, (int) actionWidth - 8);
+                String previous = font.plainSubstrByWidth(str(node, "previousLabel", "< Prev"), labelWidth);
+                String next = font.plainSubstrByWidth(str(node, "nextLabel", "Next >"), labelWidth);
+                g.drawCenteredString(font, previous, (int) (x + actionWidth / 2f), labelY, page > 0 ? node.getTheme().getColors().getOnSurface() : 0xFF6F7D8D);
                 g.drawCenteredString(font, (page + 1) + " / " + count, (int) (x + w / 2), labelY, 0xFF98A8BB);
-                g.drawCenteredString(font, "Next >", (int) (x + w - actionWidth / 2f), labelY, page < count - 1 ? 0xFFEAF0F7 : 0xFF6F7D8D);
+                g.drawCenteredString(font, next, (int) (x + w - actionWidth / 2f), labelY, page < count - 1 ? node.getTheme().getColors().getOnSurface() : 0xFF6F7D8D);
             }
             case "Accordion" -> {
                 g.drawString(font, (bool(node, "expanded", false) ? "v " : "> ") + str(node, "title", ""),
                     (int) x, (int) y + 2, 0xFFFFFFFF, false);
             }
             case "Dropdown" -> {
-                @SuppressWarnings("unchecked")
-                List<String> options = (List<String>) node.getProps().get("options");
+                            List<String> options = node.getOptions();
                 int sel = intProp(node, "selectedIndex", 0);
                 boolean expanded = bool(node, "expanded", false);
                 float progress = floatProp(node, "expansion", expanded ? 1f : 0f);
                 float header = DropdownMetrics.HEADER_HEIGHT;
                 ShapeRenderer.border(g, x, y, w, header, 6f, 1f,
-                    expanded ? 0xFF5B948F : 0xFF3B4858, 0xFF202B38, null);
+                    expanded ? 0xFF5B948F : 0xFF3B4858, node.getTheme().getColors().getSurface(), null);
                 String current = options != null && sel >= 0 && sel < options.size() ? options.get(sel) : "";
                 g.drawString(font, font.plainSubstrByWidth(current, Math.max(0, (int) w - 32)),
-                    (int) x + 9, (int) (y + (header - font.lineHeight) / 2), 0xFFEAF0F7, false);
+                    (int) x + 9, (int) (y + (header - font.lineHeight) / 2), node.getTheme().getColors().getOnSurface(), false);
                 float arrowY = y + header / 2;
                 float direction = 1f - 2f * progress;
                 ShapeRenderer.line(g, x + w - 17, arrowY - direction * 1.5f, x + w - 14, arrowY + direction * 1.5f, 1.3f, 0xFFB5C3D1);
@@ -459,7 +461,7 @@ public class UiRenderer {
                     if (visibleH <= 0) break;
                     g.enableScissor((int) x, (int) Math.floor(menuY - scrollY), (int) Math.ceil(x + w), (int) Math.ceil(menuY + visibleH - scrollY));
                     try {
-                        ShapeRenderer.border(g, x, menuY, w, menuH, 6f, 1f, 0xFF3B4858, 0xFF202B38, null);
+                        ShapeRenderer.border(g, x, menuY, w, menuH, 6f, 1f, 0xFF3B4858, node.getTheme().getColors().getSurface(), null);
                         for (int i = 0; i < options.size(); i++) {
                             float iy = menuY + DropdownMetrics.MENU_PADDING + i * DropdownMetrics.ROW_HEIGHT;
                             boolean hovered = expanded && progress >= 1 && visuals.bounds(node).getInputEnabled()
@@ -476,15 +478,13 @@ public class UiRenderer {
                 }
             }
             case "MultiSelect" -> {
-                @SuppressWarnings("unchecked")
-                List<String> options = (List<String>) node.getProps().get("options");
-                @SuppressWarnings("unchecked")
-                java.util.Set<Integer> selected = (java.util.Set<Integer>) node.getProps().get("selected");
+                            List<String> options = node.getOptions();
+                            java.util.Set<Integer> selected = node.getSelectedOptions();
                 if (options != null) {
                     for (int i = 0; i < options.size(); i++) {
                         float iy = y + i * 18;
                         boolean s = selected != null && selected.contains(i);
-                        ShapeRenderer.rounded(g, x, iy, 14f, 14f, 4f, 4f, 4f, 4f, s ? intProp(node, "accent", 0xFF7C5CFF) : 0xFF2A2A35);
+                        ShapeRenderer.rounded(g, x, iy, 14f, 14f, 4f, 4f, 4f, 4f, s ? intProp(node, "accent", node.getTheme().getColors().getAccent()) : node.getTheme().getColors().getSurface());
                         if (s) drawCheck(g, x, iy);
                         g.drawString(font, options.get(i), (int) x + 18, (int) iy + 3, 0xFFFFFFFF, false);
                     }
@@ -581,20 +581,19 @@ public class UiRenderer {
         return dismissDropdowns(composition, List.of());
     }
 
-    @SuppressWarnings("unchecked")
     private boolean dismissDropdowns(Composition composition, List<UiNode> keepOpen) {
         if (visuals == null) return false;
         // Collect first: callbacks may synchronously replace the composition tree.
-        List<Function1<Boolean, Unit>> callbacks = new java.util.ArrayList<>();
+        List<java.util.function.Consumer<Boolean>> callbacks = new java.util.ArrayList<>();
         for (UiNode node : composition.getRoot().findAll("Dropdown")) {
             VisualBounds bounds = visuals.bounds(node);
             if (bounds != null && bounds.getInputEnabled() && bool(node, "expanded", false)
                 && !keepOpen.contains(node)) {
-                Function1<Boolean, Unit> callback = (Function1<Boolean, Unit>) node.getProps().get("onExpandedChange");
+                java.util.function.Consumer<Boolean> callback = node.getEvents().getExpandedChange();
                 if (callback != null) callbacks.add(callback);
             }
         }
-        callbacks.forEach(callback -> callback.invoke(false));
+        callbacks.forEach(callback -> callback.accept(false));
         return !callbacks.isEmpty();
     }
 
@@ -606,24 +605,22 @@ public class UiRenderer {
     }
 
     /** Structural controls interpret clicks over their own area. */
-    @SuppressWarnings("unchecked")
     private boolean fireControl(UiNode node, double mouseX, double mouseY) {
         VisualPosition position = visualPosition(node);
         float x = position.x();
         float y = position.y();
         switch (node.getType()) {
             case "Checkbox", "Switch" -> {
-                Function1<Boolean, Unit> cb = (Function1<Boolean, Unit>) node.getProps().get("onCheckedChange");
-                if (cb == null) cb = (Function1<Boolean, Unit>) node.getProps().get("onValueChange");
+                java.util.function.Consumer<Boolean> cb = node.getEvents().getCheckedChange();
                 if (cb != null) {
-                    cb.invoke(!bool(node, "checked", bool(node, "value", false)));
+                    cb.accept(!bool(node, "checked", bool(node, "value", false)));
                     return true;
                 }
             }
             case "RadioButton" -> {
-                Function0<Unit> cb = (Function0<Unit>) node.getProps().get("onClick");
+                Runnable cb = node.getEvents().getClick();
                 if (cb != null) {
-                    cb.invoke();
+                    cb.run();
                     return true;
                 }
             }
@@ -633,72 +630,72 @@ public class UiRenderer {
                 return true;
             }
             case "Accordion" -> {
-                Function1<Boolean, Unit> cb = (Function1<Boolean, Unit>) node.getProps().get("onExpandedChange");
+                java.util.function.Consumer<Boolean> cb = node.getEvents().getExpandedChange();
                 if (cb != null && mouseY < y + 18) {
-                    cb.invoke(!bool(node, "expanded", false));
+                    cb.accept(!bool(node, "expanded", false));
                     return true;
                 }
             }
             case "Dropdown" -> {
-                List<String> options = (List<String>) node.getProps().get("options");
-                Function1<Integer, Unit> onSelect = (Function1<Integer, Unit>) node.getProps().get("onSelect");
-                Function1<Boolean, Unit> onExpanded = (Function1<Boolean, Unit>) node.getProps().get("onExpandedChange");
+                List<String> options = node.getOptions();
+                java.util.function.Consumer<Integer> onSelect = node.getEvents().getSelect();
+                java.util.function.Consumer<Boolean> onExpanded = node.getEvents().getExpandedChange();
                 if (options == null) return false;
                 if (bool(node, "expanded", false)) {
                     if (mouseY < y + DropdownMetrics.HEADER_HEIGHT) {
-                        if (onExpanded != null) onExpanded.invoke(false);
+                        if (onExpanded != null) onExpanded.accept(false);
                         return onExpanded != null;
                     }
                     if (floatProp(node, "expansion", 1f) < 1f) return true;
                     int idx = DropdownMetrics.optionAt((float) (mouseY - y), options.size());
                     if (idx >= 0 && idx < options.size() && onSelect != null) {
-                        onSelect.invoke(idx);
-                        if (onExpanded != null) onExpanded.invoke(false);
+                        onSelect.accept(idx);
+                        if (onExpanded != null) onExpanded.accept(false);
                         return true;
                     }
                     return true;
                 } else if (onExpanded != null && mouseY < y + DropdownMetrics.HEADER_HEIGHT) {
-                    onExpanded.invoke(true);
+                    onExpanded.accept(true);
                     return true;
                 }
                 // Consume clicks on the remaining exit animation, without selecting a row.
                 return true;
             }
             case "RadioGroup" -> {
-                List<String> options = (List<String>) node.getProps().get("options");
-                Function1<Integer, Unit> onSelect = (Function1<Integer, Unit>) node.getProps().get("onSelect");
+                List<String> options = node.getOptions();
+                java.util.function.Consumer<Integer> onSelect = node.getEvents().getSelect();
                 if (options != null && onSelect != null) {
                     int idx = (int) Math.floor((mouseY - y) / 18);
                     if (idx >= 0 && idx < options.size()) {
-                        onSelect.invoke(idx);
+                        onSelect.accept(idx);
                         return true;
                     }
                 }
             }
             case "MultiSelect" -> {
-                List<String> options = (List<String>) node.getProps().get("options");
-                java.util.Set<Integer> selected = (java.util.Set<Integer>) node.getProps().get("selected");
-                Function1<java.util.Set<Integer>, Unit> onChange =
-                    (Function1<java.util.Set<Integer>, Unit>) node.getProps().get("onSelectionChange");
+                List<String> options = node.getOptions();
+                java.util.Set<Integer> selected = node.getSelectedOptions();
+                java.util.function.Consumer<java.util.Set<Integer>> onChange =
+                    node.getEvents().getSelectionChange();
                 if (options != null && onChange != null) {
                     int idx = (int) Math.floor((mouseY - y) / 18);
                     if (idx >= 0 && idx < options.size()) {
                         java.util.Set<Integer> next = new java.util.HashSet<>(selected != null ? selected : java.util.Set.of());
                         if (!next.remove(idx)) next.add(idx);
-                        onChange.invoke(next);
+                        onChange.accept(next);
                         return true;
                     }
                 }
             }
             case "Pagination" -> {
-                Function1<Integer, Unit> cb = (Function1<Integer, Unit>) node.getProps().get("onPageChange");
+                java.util.function.Consumer<Integer> cb = node.getEvents().getPageChange();
                 int page = intProp(node, "page", 0);
                 int count = intProp(node, "pageCount", 1);
                 if (cb != null) {
                     double actionWidth = Math.min(60.0, node.getWidth() / 3.0);
                     double lx = mouseX - x;
-                    if (lx <= actionWidth && page > 0) cb.invoke(page - 1);
-                    else if (lx >= node.getWidth() - actionWidth && page < count - 1) cb.invoke(page + 1);
+                    if (lx <= actionWidth && page > 0) cb.accept(page - 1);
+                    else if (lx >= node.getWidth() - actionWidth && page < count - 1) cb.accept(page + 1);
                     return true;
                 }
             }
@@ -753,13 +750,13 @@ public class UiRenderer {
     }
 
     private void dragSliderTo(UiNode slider, double mouseX) {
-        Function1<Float, Unit> cb = (Function1<Float, Unit>) slider.getProps().get("onValueChange");
+        java.util.function.Consumer<Float> cb = slider.getEvents().getFloatChange();
         if (cb == null) return;
         float min = floatProp(slider, "min", 0f);
         float max = floatProp(slider, "max", 1f);
         float frac = (float) ((mouseX - visualPosition(slider).x()) / Math.max(1, slider.getWidth()));
         frac = Math.min(1f, Math.max(0f, frac));
-        cb.invoke(min + frac * (max - min));
+        cb.accept(min + frac * (max - min));
     }
 
     private ShapeRenderer.Rect notchRect(Cutout cutout, float x, float y, float w, float h) {

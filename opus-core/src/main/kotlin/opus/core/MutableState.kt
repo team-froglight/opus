@@ -20,7 +20,8 @@ class MutableState<T>(initial: T) {
             if (field != v) {
                 field = v
                 val fire = scopes.toList()
-                scopes.clear()
+                // A successful composition disposes its previous scope. Keep it subscribed
+                // until then so a failed composition can recover on the next state change.
                 fire.forEach { it.invalidate() }
             }
         }

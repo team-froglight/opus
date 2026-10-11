@@ -8,8 +8,8 @@ enum class TextRole { HEADING_1, HEADING_2, HEADING_3, PARAGRAPH, LABEL }
 
 @Composable
 @JvmOverloads
-fun Text(text: String, role: TextRole = TextRole.PARAGRAPH, modifier: Modifier = Modifier, fontId: String? = null, color: Int = 0xFFFFFFFF.toInt()) {
-    emit("Text", modifier, mapOf("text" to text, "role" to role, "fontId" to fontId, "color" to color))
+fun Text(text: String, role: TextRole = TextRole.PARAGRAPH, modifier: Modifier = Modifier, fontId: String? = null, color: Int = LocalTheme.current.colors.onSurface) {
+    emit("Text", modifier, mapOf("text" to text, "role" to role, "fontId" to fontId, "color" to color, "textSize" to LocalTheme.current.typography.sizeFor(role)))
 }
 
 @Composable
@@ -39,7 +39,7 @@ fun Label(text: String, modifier: Modifier = Modifier) {
 
 @Composable
 @JvmOverloads
-fun Button(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true, accent: Int = 0xFF7C5CFF.toInt()) {
+fun Button(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true, accent: Int = LocalTheme.current.colors.accent) {
     buttonNode(text, onClick, modifier, enabled, accent, null)
 }
 
@@ -49,7 +49,7 @@ enum class ArrowDirection { LEFT, RIGHT }
 @Composable
 @JvmOverloads
 fun ArrowButton(direction: ArrowDirection, label: String, onClick: () -> Unit,
-                modifier: Modifier = Modifier, enabled: Boolean = true, accent: Int = 0xFF7C5CFF.toInt()) {
+                modifier: Modifier = Modifier, enabled: Boolean = true, accent: Int = LocalTheme.current.colors.accent) {
     buttonNode(label, onClick, modifier.size(26f, 24f), enabled, accent, direction)
 }
 
@@ -68,14 +68,14 @@ private fun buttonNode(text: String, onClick: () -> Unit, modifier: Modifier, en
 
 @Composable
 @JvmOverloads
-fun Checkbox(checked: Boolean, onCheckedChange: (Boolean) -> Unit, modifier: Modifier = Modifier, label: String? = null, accent: Int = 0xFF7C5CFF.toInt()) {
-    emit("Checkbox", modifier, mapOf("checked" to checked, "onCheckedChange" to onCheckedChange, "label" to label, "accent" to accent))
+fun Checkbox(checked: Boolean, onCheckedChange: (Boolean) -> Unit, modifier: Modifier = Modifier, label: String? = null, accent: Int = LocalTheme.current.colors.accent) {
+    emit("Checkbox", modifier, mapOf("checked" to checked, "onCheckedChange" to onCheckedChange, "events" to ControlEvents(checkedChange = java.util.function.Consumer { onCheckedChange(it) }), "label" to label, "accent" to accent))
 }
 
 @Composable
 @JvmOverloads
-fun RadioButton(selected: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier, label: String? = null, accent: Int = 0xFF7C5CFF.toInt()) {
-    emit("RadioButton", modifier, mapOf("selected" to selected, "onClick" to onClick, "label" to label, "accent" to accent))
+fun RadioButton(selected: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier, label: String? = null, accent: Int = LocalTheme.current.colors.accent) {
+    emit("RadioButton", modifier, mapOf("selected" to selected, "onClick" to onClick, "events" to ControlEvents(click = Runnable { onClick() }), "label" to label, "accent" to accent))
 }
 
 @Composable
@@ -85,20 +85,21 @@ fun RadioGroup(
     selectedIndex: Int,
     onSelect: (Int) -> Unit,
     modifier: Modifier = Modifier,
-    accent: Int = 0xFF7C5CFF.toInt()
+    accent: Int = LocalTheme.current.colors.accent
 ) {
-    emit("RadioGroup", modifier, mapOf("options" to options, "selectedIndex" to selectedIndex, "onSelect" to onSelect, "accent" to accent))
+    validateSelection(options, selectedIndex)
+    emit("RadioGroup", modifier, mapOf("options" to java.util.Collections.unmodifiableList(options.toList()), "selectedIndex" to selectedIndex, "onSelect" to onSelect, "events" to ControlEvents(select = java.util.function.Consumer { onSelect(it) }), "accent" to accent))
 }
 
 @Composable
 @JvmOverloads
-fun Switch(checked: Boolean, onCheckedChange: (Boolean) -> Unit, modifier: Modifier = Modifier, accent: Int = 0xFF7C5CFF.toInt()) {
+fun Switch(checked: Boolean, onCheckedChange: (Boolean) -> Unit, modifier: Modifier = Modifier, accent: Int = LocalTheme.current.colors.accent) {
     val composer = Composition.currentComposer ?: error("Switch outside composition")
     composer.startGroup("Switch")
     try {
         val position = animateFloat(if (checked) 1f else 0f, 180)
         val trackColor = animateColor(if (checked) accent else 0xFF3A3A44.toInt(), 180)
-        emit("Switch", modifier, mapOf("checked" to checked, "onCheckedChange" to onCheckedChange,
+        emit("Switch", modifier, mapOf("checked" to checked, "onCheckedChange" to onCheckedChange, "events" to ControlEvents(checkedChange = java.util.function.Consumer { onCheckedChange(it) }),
             "accent" to accent, "position" to position, "trackColor" to trackColor))
     } finally {
         composer.endGroup()
@@ -115,13 +116,16 @@ fun Toggle(value: Boolean, onValueChange: (Boolean) -> Unit, modifier: Modifier 
 
 @Composable
 @JvmOverloads
-fun Slider(value: Float, onValueChange: (Float) -> Unit, modifier: Modifier = Modifier, min: Float = 0f, max: Float = 1f, accent: Int = 0xFF7C5CFF.toInt()) {
-    emit("Slider", modifier, mapOf("value" to value, "onValueChange" to onValueChange, "min" to min, "max" to max, "accent" to accent))
+fun Slider(value: Float, onValueChange: (Float) -> Unit, modifier: Modifier = Modifier, min: Float = 0f, max: Float = 1f, accent: Int = LocalTheme.current.colors.accent) {
+    require(min.isFinite() && max.isFinite() && min < max) { "Slider requires finite min < max" }
+    require(value.isFinite() && value in min..max) { "Slider value must be finite and in min..max" }
+    emit("Slider", modifier, mapOf("value" to value, "onValueChange" to onValueChange, "events" to ControlEvents(floatChange = java.util.function.Consumer { onValueChange(it) }), "min" to min, "max" to max, "accent" to accent))
 }
 
 @Composable
 @JvmOverloads
-fun ProgressBar(progress: Float, modifier: Modifier = Modifier, accent: Int = 0xFF7C5CFF.toInt()) {
+fun ProgressBar(progress: Float, modifier: Modifier = Modifier, accent: Int = LocalTheme.current.colors.accent) {
+    require(progress.isFinite()) { "ProgressBar progress must be finite" }
     emit("ProgressBar", modifier, mapOf("progress" to progress.coerceIn(0f, 1f), "accent" to accent))
 }
 
@@ -160,7 +164,7 @@ fun Popup(onDismiss: () -> Unit, modifier: Modifier = Modifier, content: @Compos
 @JvmOverloads
 fun Accordion(title: String, expanded: Boolean, onExpandedChange: (Boolean) -> Unit, modifier: Modifier = Modifier, content: @Composable () -> Unit) {
     // Title bar occupies the top 18px; children start below it.
-    emit("Accordion", modifier.paddingEach(top = 18f), mapOf("title" to title, "expanded" to expanded, "onExpandedChange" to onExpandedChange), content)
+    emit("Accordion", modifier.paddingEach(top = 18f), mapOf("title" to title, "expanded" to expanded, "onExpandedChange" to onExpandedChange, "events" to ControlEvents(expandedChange = java.util.function.Consumer { onExpandedChange(it) })), content)
 }
 
 @Composable
@@ -173,6 +177,7 @@ fun Dropdown(
     onExpandedChange: (Boolean) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    validateSelection(options, selectedIndex)
     val composer = Composition.currentComposer ?: error("Dropdown outside composition")
     composer.startGroup("Dropdown")
     try {
@@ -180,9 +185,9 @@ fun Dropdown(
         emit(
             "Dropdown", modifier,
             mapOf(
-                "options" to options,
+                "options" to java.util.Collections.unmodifiableList(options.toList()),
                 "selectedIndex" to selectedIndex,
-                "onSelect" to onSelect,
+                "onSelect" to onSelect, "events" to ControlEvents(select = java.util.function.Consumer { onSelect(it) }, expandedChange = java.util.function.Consumer { onExpandedChange(it) }),
                 "expanded" to expanded,
                 "expansion" to progress,
                 "onExpandedChange" to onExpandedChange
@@ -198,17 +203,21 @@ fun MultiSelect(
     selected: Set<Int>,
     onSelectionChange: (Set<Int>) -> Unit,
     modifier: Modifier = Modifier,
-    accent: Int = 0xFF7C5CFF.toInt()
+    accent: Int = LocalTheme.current.colors.accent
 ) {
-    emit("MultiSelect", modifier, mapOf("options" to options, "selected" to selected, "onSelectionChange" to onSelectionChange, "accent" to accent))
+    require(selected.all { it in options.indices }) { "MultiSelect selected indices must exist in options" }
+    emit("MultiSelect", modifier, mapOf("options" to java.util.Collections.unmodifiableList(options.toList()), "selected" to java.util.Collections.unmodifiableSet(selected.toSet()), "onSelectionChange" to onSelectionChange, "events" to ControlEvents(selectionChange = java.util.function.Consumer { onSelectionChange(java.util.Collections.unmodifiableSet(it.toSet())) }), "accent" to accent))
 }
 
 // ---- Navigation / lists ----
 
 @Composable
 @JvmOverloads
-fun Pagination(page: Int, pageCount: Int, onPageChange: (Int) -> Unit, modifier: Modifier = Modifier) {
-    emit("Pagination", modifier, mapOf("page" to page, "pageCount" to pageCount, "onPageChange" to onPageChange))
+fun Pagination(page: Int, pageCount: Int, onPageChange: (Int) -> Unit, modifier: Modifier = Modifier,
+               previousLabel: String = "< Prev", nextLabel: String = "Next >") {
+    require(pageCount >= 1 && page in 0 until pageCount) { "Pagination uses zero-based page in 0 until pageCount, pageCount >= 1" }
+    emit("Pagination", modifier, mapOf("page" to page, "pageCount" to pageCount, "onPageChange" to onPageChange, "events" to ControlEvents(pageChange = java.util.function.Consumer { onPageChange(it) }),
+        "previousLabel" to previousLabel, "nextLabel" to nextLabel))
 }
 
 @Composable
@@ -218,6 +227,7 @@ fun ListColumn(
     modifier: Modifier = Modifier,
     itemContent: @Composable (Int) -> Unit
 ) {
+    require(itemCount >= 0) { "ListColumn itemCount must be nonnegative" }
     emit("ListColumn", modifier, mapOf("itemCount" to itemCount)) {
         for (i in 0 until itemCount) itemContent(i)
     }
@@ -238,4 +248,9 @@ fun LazyColumn(
     itemContent: @Composable (Int) -> Unit
 ) {
     ListColumn(itemCount, modifier, itemContent)
+}
+
+/** -1 represents no selection; all other indices must exist, including for an empty list. */
+private fun validateSelection(options: List<String>, selectedIndex: Int) {
+    require(selectedIndex == -1 || selectedIndex in options.indices) { "selectedIndex must be -1 or an existing option index" }
 }

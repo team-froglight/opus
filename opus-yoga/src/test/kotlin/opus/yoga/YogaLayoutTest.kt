@@ -26,6 +26,60 @@ private val fakeMeasurer = object : TextMeasurer {
 }
 
 class YogaLayoutTest {
+    @Test fun scopedTypographyUsesSizedMeasurementAndInvalidatesLayout() {
+        val size = opus.core.mutableStateOf(24f)
+        setContent {
+            opus.core.Theme(opus.core.Theme(typography = opus.core.Typography(bodySize = size.value))) {
+                Row { Text("abcd") }
+            }
+        }.use { c ->
+            YogaTree(fakeMeasurer).use { tree ->
+                tree.layout(c.root, c, 200f, 100f)
+                assertEquals(48f, c.root.findAll("Text").single().width)
+                assertEquals(24f, c.root.findAll("Text").single().height)
+                size.value = 18f
+                tree.layout(c.root, c, 200f, 100f)
+                assertEquals(36f, c.root.findAll("Text").single().width)
+                assertEquals(18f, c.root.findAll("Text").single().height)
+            }
+        }
+    }
+    @Test fun switchingCompositionsWithTheSameVersionRebuildsLayout() {
+        setContent { Row { Text("first") } }.use { first ->
+            setContent { Row { Text("second composition") } }.use { second ->
+                YogaTree(fakeMeasurer).use { tree ->
+                    tree.layout(first.root, first, 200f, 100f)
+                    tree.layout(second.root, second, 200f, 100f)
+                    assertEquals(108f, second.root.findAll("Text").single().width)
+                    assertEquals(12f, second.root.findAll("Text").single().height)
+                }
+            }
+        }
+    }
+
+    @Test fun nestedGridUsesItsAllocatedCellWidth() {
+        setContent {
+            Grid(2, modifier = Modifier.width(300f), gap = 8f) {
+                repeat(2) {
+                    Grid(2, modifier = Modifier.width(300f), gap = 6f) {
+                        repeat(4) { Text("cell") }
+                    }
+                }
+            }
+        }.use { c ->
+            YogaTree(fakeMeasurer).use { tree ->
+                tree.layout(c.root, c, 300f, 200f)
+                for (grid in c.root.children.single().children) {
+                    val cells = grid.children
+                    assertEquals(146f, grid.width)
+                    assertEquals(70f, cells.first().width)
+                    assertEquals(cells[0].y, cells[1].y)
+                    assertTrue(cells[2].y > cells[0].y)
+                }
+            }
+        }
+    }
+
     @Test fun inputSupportWrapsWithoutOverlappingFollowingContent() {
         setContent {
             Column {

@@ -21,7 +21,7 @@ class JavaControlApiTest {
             Ui.tooltip("tip", () -> {});
             Ui.popup(() -> {}, () -> {});
             Ui.itemSlot("minecraft:stone");
-            Ui.image("test:texture");
+            Ui.image("test:texture", Ui.clickable(Modifier.EMPTY, () -> {}));
             Ui.progressBar(0.5f);
             Ui.listColumn(2, index -> Ui.text("" + index));
             Ui.dateField("", value -> {}, "Date", Modifier.EMPTY, InputOptions.DEFAULT, LocalDate.of(2024, 1, 1), Locale.ROOT);

@@ -6,10 +6,6 @@ on:
   pull_request:
   workflow_dispatch:
 
-env:
-  ORG_GRADLE_PROJECT_ciBuildNumber: ${{ github.run_number }}
-  ORG_GRADLE_PROJECT_ciBuildAttempt: ${{ github.run_attempt }}
-
 permissions:
   contents: read
 
@@ -18,8 +14,25 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  identity:
+    name: Allocate build identity
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      number: ${{ steps.identity.outputs.number }}
+      attempt: ${{ steps.identity.outputs.attempt }}
+    steps:
+      - id: identity
+        run: |
+          echo "number=$GITHUB_RUN_NUMBER" >> "$GITHUB_OUTPUT"
+          echo "attempt=$GITHUB_RUN_ATTEMPT" >> "$GITHUB_OUTPUT"
+
   build:
     name: Build and test (${{ matrix.os }})
+    needs: identity
+    env:
+      ORG_GRADLE_PROJECT_ciBuildNumber: ${{ needs.identity.outputs.number }}
+      ORG_GRADLE_PROJECT_ciBuildAttempt: ${{ needs.identity.outputs.attempt }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 40
     strategy:
@@ -89,7 +102,12 @@ jobs:
 
   prerelease:
     name: Publish tested prerelease
-    needs: build
+    needs: [identity, build]
+    env:
+      ORG_GRADLE_PROJECT_ciBuildNumber: ${{ needs.identity.outputs.number }}
+      ORG_GRADLE_PROJECT_ciBuildAttempt: ${{ needs.identity.outputs.attempt }}
+      BUILD_NUMBER: ${{ needs.identity.outputs.number }}
+      BUILD_ATTEMPT: ${{ needs.identity.outputs.attempt }}
     if: github.event_name != 'pull_request' && startsWith(github.ref, 'refs/heads/')
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -119,12 +137,12 @@ jobs:
           path: dist
       - name: Create numbered GitHub prerelease
         run: |
-          tag="build-${GITHUB_RUN_NUMBER}.${GITHUB_RUN_ATTEMPT}"
+          tag="build-${BUILD_NUMBER}.${BUILD_ATTEMPT}"
           mapfile -t jars < <(find dist -type f -name '*.jar' | sort)
           test "${#jars[@]}" -gt 0
           gh release create "$tag" "${jars[@]}" \
             --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
-            --title "Opus build ${GITHUB_RUN_NUMBER} (attempt ${GITHUB_RUN_ATTEMPT})" \
+            --title "Opus build ${BUILD_NUMBER} (attempt ${BUILD_ATTEMPT})" \
             --prerelease --latest=false --generate-notes
         env:
           GH_TOKEN: ${{ github.token }}

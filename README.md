@@ -105,7 +105,9 @@ example. The showcase uses local source sets only for library development.
 Every successful branch push or manual CI run creates a GitHub prerelease `build-N.A`
 and publishes all four modules and the catalog as `0.2.0-build.N.A`, after all three
 platforms pass. `N` is GitHub's increasing workflow run number; `A` is its attempt number,
-so reruns cannot overwrite previous artifacts. Failed builds and pull requests do not publish.
+so full workflow reruns cannot overwrite previous artifacts. Failed builds and pull requests do not publish.
+An initial job fixes the identity for all builds/publications. Retrying only failed jobs
+keeps that identity; use **Re-run all jobs** after an interrupted publication to get a fresh attempt.
 Shop remains pinned to `0.2.0` until its `opus_version` is explicitly updated.
 Local builds keep the base version. To simulate CI, pass `-PciBuildNumber=123 -PciBuildAttempt=1`.
 For a stable Maven release, increment `opus_version`, validate it, then run

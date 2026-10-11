@@ -145,4 +145,4 @@ jobs:
             --title "Opus build ${BUILD_NUMBER} (attempt ${BUILD_ATTEMPT})" \
             --prerelease --latest=false --generate-notes
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.RELEASE_TOKEN || github.token }}

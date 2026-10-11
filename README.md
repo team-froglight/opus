@@ -113,6 +113,14 @@ Local builds keep the base version. To simulate CI, pass `-PciBuildNumber=123 -P
 For a stable Maven release, increment `opus_version`, validate it, then run
 `publishAllPublicationsToGitHubPackagesRepository` with package-write credentials.
 Never overwrite an existing release. No counter/revision file is committed.
+
+GitHub release creation uses `RELEASE_TOKEN` when configured, otherwise the workflow token.
+For reliable releases of older commits that change workflows, configure a dedicated
+fine-grained `RELEASE_TOKEN` restricted to this repository with **Contents: write** and
+**Workflows: write**. The built-in token cannot satisfy GitHub's
+[workflow-change scope requirement](https://github.blog/changelog/2023-11-02-github-actions-enforcing-workflow-scope-when-creating-a-release/)
+when the built commit is no longer a branch head/tag. This token is used only for GitHub
+release creation; Maven publication uses the job's package-write workflow token.
 For offline publication-contract checks, use `publishAllPublicationsToVerificationRepository`
 and point a consumer's `opusRepository` at the generated `build/verification-maven` directory.
 

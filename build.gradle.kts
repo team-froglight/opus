@@ -6,7 +6,17 @@ plugins {
 }
 
 group = providers.gradleProperty("mod_group_id").get()
-version = providers.gradleProperty("opus_version").get()
+val ciBuildNumber = providers.gradleProperty("ciBuildNumber").orNull
+val ciBuildAttempt = providers.gradleProperty("ciBuildAttempt").orNull
+require(ciBuildNumber != null || ciBuildAttempt == null) { "ciBuildAttempt requires ciBuildNumber" }
+val ciVersionSuffix = ciBuildNumber?.let { number ->
+    val attempt = ciBuildAttempt ?: "1"
+    require(number.matches(Regex("[1-9][0-9]*")) && attempt.matches(Regex("[1-9][0-9]*"))) {
+        "ciBuildNumber and ciBuildAttempt must be positive integers"
+    }
+    "-build.$number.$attempt"
+} ?: ""
+version = providers.gradleProperty("opus_version").get() + ciVersionSuffix
 
 catalog { versionCatalog { from(files("gradle/libs.versions.toml")) } }
 publishing {
@@ -46,7 +56,7 @@ val nativeArch = when (hostArch) {
 extra["lwjglNatives"] = "natives-$nativeOs$nativeArch"
 
 subprojects {
-    version = if (name == "opus-showcase") providers.gradleProperty("showcase_mod_version").get() else rootProject.version
+    version = if (name == "opus-showcase") providers.gradleProperty("showcase_mod_version").get() + ciVersionSuffix else rootProject.version
     repositories {
         mavenCentral()
     }

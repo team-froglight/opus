@@ -102,9 +102,15 @@ When embedding into a mod, include the four libraries, Kotlin stdlib and LWJGL Y
 The [shop build](https://github.com/team-froglight/shop/blob/main/build.gradle) is a consumer
 example. The showcase uses local source sets only for library development.
 
-Publishing is an explicit CI dispatch: run **CI** with **publish=true**. The release job
-publishes all four modules and the catalog only after Windows/Linux/macOS checks succeed.
-Increment `opus_version` for a new release; never overwrite an existing release.
+Every successful branch push or manual CI run creates a GitHub prerelease `build-N.A`
+and publishes all four modules and the catalog as `0.2.0-build.N.A`, after all three
+platforms pass. `N` is GitHub's increasing workflow run number; `A` is its attempt number,
+so reruns cannot overwrite previous artifacts. Failed builds and pull requests do not publish.
+Shop remains pinned to `0.2.0` until its `opus_version` is explicitly updated.
+Local builds keep the base version. To simulate CI, pass `-PciBuildNumber=123 -PciBuildAttempt=1`.
+For a stable Maven release, increment `opus_version`, validate it, then run
+`publishAllPublicationsToGitHubPackagesRepository` with package-write credentials.
+Never overwrite an existing release. No counter/revision file is committed.
 For offline publication-contract checks, use `publishAllPublicationsToVerificationRepository`
 and point a consumer's `opusRepository` at the generated `build/verification-maven` directory.
 

@@ -14,7 +14,6 @@ evaluationDependsOn(":opus-minecraft")
 evaluationDependsOn(":opus-neoforge")
 
 group = providers.gradleProperty("mod_group_id").get()
-version = providers.gradleProperty("showcase_mod_version").get()
 base {
     archivesName.set(providers.gradleProperty("showcase_mod_id").get())
 }
@@ -96,4 +95,9 @@ dependencies {
 }
 
 // Library assets must also be visible as resources of the consuming mod.
-tasks.processResources { from(ss(":opus-minecraft").resources) }
+tasks.processResources {
+    from(ss(":opus-minecraft").resources)
+    val modVersion = project.version.toString()
+    inputs.property("showcaseVersion", modVersion)
+    filesMatching("META-INF/neoforge.mods.toml") { expand("mod_version" to modVersion) }
+}

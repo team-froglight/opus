@@ -102,9 +102,13 @@ When embedding into a mod, include the four libraries, Kotlin stdlib and LWJGL Y
 The [shop build](https://github.com/team-froglight/shop/blob/main/build.gradle) is a consumer
 example. The showcase uses local source sets only for library development.
 
-Every successful branch push or manual CI run creates a GitHub prerelease `build-N.A`
-and publishes all four modules and the catalog as `0.2.0-build.N.A`, after all three
-platforms pass. `N` is GitHub's increasing workflow run number; `A` is its attempt number,
+Every successful branch push or manual CI run creates a GitHub prerelease such as
+`build-20261011-01`. The date is UTC at publication; the per-repository daily counter starts
+at `01`, uses at least two digits and increments from existing tags. Atomic tag reservation
+handles overlapping builds without overwriting a tag. Interrupted releases can leave gaps.
+Existing tags retain their original names.
+Maven packages and JAR versions remain `0.2.0-build.N.A`, after all three platforms pass.
+`N` is GitHub's increasing workflow run number; `A` is its attempt number,
 so full workflow reruns cannot overwrite previous artifacts. Failed builds and pull requests do not publish.
 An initial job fixes the identity for all builds/publications. Retrying only failed jobs
 keeps that identity; use **Re-run all jobs** after an interrupted publication to get a fresh attempt.
@@ -120,7 +124,7 @@ fine-grained `RELEASE_TOKEN` restricted to this repository with **Contents: writ
 **Workflows: write**. The built-in token cannot satisfy GitHub's
 [workflow-change scope requirement](https://github.blog/changelog/2023-11-02-github-actions-enforcing-workflow-scope-when-creating-a-release/)
 when the built commit is no longer a branch head/tag. This token is used only for GitHub
-release creation; Maven publication uses the job's package-write workflow token.
+tag/release creation; Maven publication uses the job's package-write workflow token.
 For offline publication-contract checks, use `publishAllPublicationsToVerificationRepository`
 and point a consumer's `opusRepository` at the generated `build/verification-maven` directory.
 

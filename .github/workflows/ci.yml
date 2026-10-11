@@ -46,6 +46,9 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Test prerelease naming and allocation
+        run: node --test .github/scripts/prerelease.test.mjs
+
       - name: Set up Java 21
         uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
         with:
@@ -106,8 +109,6 @@ jobs:
     env:
       ORG_GRADLE_PROJECT_ciBuildNumber: ${{ needs.identity.outputs.number }}
       ORG_GRADLE_PROJECT_ciBuildAttempt: ${{ needs.identity.outputs.attempt }}
-      BUILD_NUMBER: ${{ needs.identity.outputs.number }}
-      BUILD_ATTEMPT: ${{ needs.identity.outputs.attempt }}
     if: github.event_name != 'pull_request' && startsWith(github.ref, 'refs/heads/')
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -136,13 +137,6 @@ jobs:
           name: opus-jars
           path: dist
       - name: Create numbered GitHub prerelease
-        run: |
-          tag="build-${BUILD_NUMBER}.${BUILD_ATTEMPT}"
-          mapfile -t jars < <(find dist -type f -name '*.jar' | sort)
-          test "${#jars[@]}" -gt 0
-          gh release create "$tag" "${jars[@]}" \
-            --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
-            --title "Opus build ${BUILD_NUMBER} (attempt ${BUILD_ATTEMPT})" \
-            --prerelease --latest=false --generate-notes
+        run: node .github/scripts/prerelease.mjs "Opus" dist
         env:
           GH_TOKEN: ${{ secrets.RELEASE_TOKEN || github.token }}

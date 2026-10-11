@@ -7,11 +7,8 @@ plugins {
     id("net.neoforged.moddev")
 }
 
-// Library modules must be evaluated before we read their source sets below.
-evaluationDependsOn(":opus-core")
-evaluationDependsOn(":opus-yoga")
+// Resource assets are copied from the Minecraft adapter for the mod resource pack.
 evaluationDependsOn(":opus-minecraft")
-evaluationDependsOn(":opus-neoforge")
 
 group = providers.gradleProperty("mod_group_id").get()
 base {
@@ -50,14 +47,8 @@ neoForge {
     mods {
         create(gradleProp("showcase_mod_id")) {
             sourceSet(sourceSets["main"])
-            // Library modules ride inside the mod's own module layer (dev runs)
-            // so FML's layer can see both them and Minecraft classes together.
-            // (Plain project jars on the run classpath land on a parent layer
-            // that cannot see MC -> NoClassDefFoundError Screen.)
-            sourceSet(ss(":opus-core"))
-            sourceSet(ss(":opus-yoga"))
-            sourceSet(ss(":opus-minecraft"))
-            sourceSet(ss(":opus-neoforge"))
+            // Load the built library jars, just like downstream consumers. Merging
+            // library source sets here would hide incorrect FMLModType manifests.
         }
     }
 }
@@ -72,10 +63,8 @@ dependencies {
     implementation(project(":opus-minecraft"))
     implementation(project(":opus-neoforge"))
 
-    // MDG 2.0 on MC <= 1.21.8: plain library jars are NOT on run/test classpaths
-    // and are NOT embedded in the mod jar. jarJar embeds them for players;
-    // additionalRuntimeClasspath puts them on dev-run classpaths (else
-    // ClassNotFoundException, see MDG docs "External Dependencies: Runs").
+    // FMLModType manifests make Opus jars discoverable in development runs;
+    // jarJar embeds the same jars in the distributable mod.
     jarJar(project(":opus-core"))
     jarJar(project(":opus-yoga"))
     jarJar(project(":opus-minecraft"))

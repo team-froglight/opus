@@ -80,39 +80,41 @@ public final class ClientMod {
 
 ## Maven package
 
-The `0.2.0` release targets Java 21, Minecraft 1.21.1 and NeoForge 21.1. The registry is
+The `0.2.1` release targets Java 21, Minecraft 1.21.1 and NeoForge 21.1. The registry is
 `https://maven.pkg.github.com/team-froglight/opus`. Configure `gpr.user` and `gpr.key` in
 your user-level Gradle properties (a GitHub token with `read:packages`), or supply
 `GITHUB_ACTOR` and `GITHUB_TOKEN` through your environment. Never commit credentials.
 
 ```groovy
 dependencies {
-    implementation 'me.methodial.opus:opus-neoforge:0.2.0'
+    implementation 'me.methodial.opus:opus-neoforge:0.2.1'
 }
 ```
 
 This entry point transitively exposes `opus-minecraft`, `opus-yoga` and `opus-core`.
-Portable consumers can depend directly on `opus-core`. `opus-catalog:0.2.0` is a published
+Portable consumers can depend directly on `opus-core`. `opus-catalog:0.2.1` is a published
 Gradle version catalog for matching Kotlin, Yoga and test dependencies. All library jars
-have explicit module names and `FMLModType=LIBRARY` manifests; Yoga bundles natives for
+have explicit module names. Core and Yoga use `FMLModType=LIBRARY`; Minecraft and NeoForge
+adapters use `FMLModType=GAMELIBRARY` so they can read game classes. Yoga bundles natives for
 Windows, Linux and macOS on x64/ARM64, without a dependency on the publisher's host OS.
 
 When embedding into a mod, include the four libraries, Kotlin stdlib and LWJGL Yoga through
 `jarJar`; copy `assets/opus/**` from the `opus-minecraft` artifact into the mod's resources.
 The [shop build](https://github.com/team-froglight/shop/blob/main/build.gradle) is a consumer
-example. The showcase uses local source sets only for library development.
+example. The showcase loads built library jars in development too, rather than merging
+library source sets into the mod; this keeps runtime module-layer behavior consistent.
 
 Every successful branch push or manual CI run creates a GitHub prerelease such as
 `build-20261011-01`. The date is UTC at publication; the per-repository daily counter starts
 at `01`, uses at least two digits and increments from existing tags. Atomic tag reservation
 handles overlapping builds without overwriting a tag. Interrupted releases can leave gaps.
 Existing tags retain their original names.
-Maven packages and JAR versions remain `0.2.0-build.N.A`, after all three platforms pass.
+Maven packages and JAR versions use `0.2.1-build.N.A`, after all three platforms pass.
 `N` is GitHub's increasing workflow run number; `A` is its attempt number,
 so full workflow reruns cannot overwrite previous artifacts. Failed builds and pull requests do not publish.
 An initial job fixes the identity for all builds/publications. Retrying only failed jobs
 keeps that identity; use **Re-run all jobs** after an interrupted publication to get a fresh attempt.
-Shop remains pinned to `0.2.0` until its `opus_version` is explicitly updated.
+Shop adopts a library release by explicitly updating its `opus_version`.
 Local builds keep the base version. To simulate CI, pass `-PciBuildNumber=123 -PciBuildAttempt=1`.
 For a stable Maven release, increment `opus_version`, validate it, then run
 `publishAllPublicationsToGitHubPackagesRepository` with package-write credentials.

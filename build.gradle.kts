@@ -1,4 +1,23 @@
 import org.gradle.api.publish.maven.MavenPublication
+import java.util.jar.JarFile
+
+abstract class VerifyLibraryManifest : DefaultTask() {
+    @get:InputFile abstract val archive: RegularFileProperty
+    @get:Input abstract val expectedModType: Property<String>
+    @get:Input abstract val expectedModuleName: Property<String>
+
+    @TaskAction fun verify() {
+        JarFile(archive.get().asFile).use { jar ->
+            val attributes = jar.manifest.mainAttributes
+            check(attributes.getValue("FMLModType") == expectedModType.get()) {
+                "${jar.name}: incorrect NeoForge module layer classification"
+            }
+            check(attributes.getValue("Automatic-Module-Name") == expectedModuleName.get()) {
+                "${jar.name}: incorrect automatic module name"
+            }
+        }
+    }
+}
 
 plugins {
     `maven-publish`
@@ -64,11 +83,21 @@ subprojects {
         apply(plugin = "maven-publish")
         plugins.withId("java-library") {
             extensions.configure<JavaPluginExtension> { withSourcesJar() }
+            val libraryModType = if (project.name in setOf("opus-minecraft", "opus-neoforge")) "GAMELIBRARY" else "LIBRARY"
+            val libraryModuleName = project.name.replace('-', '.')
             tasks.withType<Jar>().configureEach {
                 isPreserveFileTimestamps = false
                 isReproducibleFileOrder = true
-                manifest.attributes("FMLModType" to "LIBRARY", "Automatic-Module-Name" to project.name.replace('-', '.'))
+                // Game adapters must share the TRANSFORMER layer with Minecraft/NeoForge.
+                // LIBRARY is the parent PLUGIN layer and cannot read game modules.
+                manifest.attributes("FMLModType" to libraryModType, "Automatic-Module-Name" to libraryModuleName)
             }
+            val verifyManifest = tasks.register<VerifyLibraryManifest>("verifyLibraryManifest") {
+                archive.set(tasks.named<Jar>("jar").flatMap { it.archiveFile })
+                expectedModType.set(libraryModType)
+                expectedModuleName.set(libraryModuleName)
+            }
+            tasks.named("check") { dependsOn(verifyManifest) }
             extensions.configure<PublishingExtension> {
                 publications {
                     create<MavenPublication>("library") {

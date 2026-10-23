@@ -2,15 +2,18 @@ package opus.minecraft;
 
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
+import opus.core.Colors;
 import opus.core.DateInput;
+import opus.core.PixelIcon;
 import opus.core.UiNode;
 import org.lwjgl.glfw.GLFW;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.Locale;
 
-/** Inline calendar; editing the ISO draft and picking a day share one controlled value. */
+/** Floating calendar; editing the ISO draft and picking a day share one controlled value. */
 final class DatePicker {
+    static final float HEIGHT = DateInput.CALENDAR_HEIGHT;
     private LocalDate cursor;
     private boolean keyboard;
     static boolean expanded(UiNode node) { return Boolean.TRUE.equals(node.getProps().get("expanded")); }
@@ -70,19 +73,20 @@ final class DatePicker {
     }
 
     void draw(UiNode node, GuiGraphics g, Font font, float x, float y, float width, int accent) {
+        Colors colors = node.getTheme().getColors();
         LocalDate month = (LocalDate) node.getProps().get("month");
         LocalDate selected = DateInput.parseOrNull((String) node.getProps().get("value"));
         LocalDate today = (LocalDate) node.getProps().getOrDefault("today", month);
-        ShapeRenderer.border(g, x, y, width, DateInput.CALENDAR_HEIGHT, 5, 1, 0xFF435367, 0xFF101924, null);
+        ShapeRenderer.border(g, x, y, width, HEIGHT, 5, 1, colors.getOutline(), colors.getOverlay(), null);
         String title = month.format(DateTimeFormatter.ofPattern("MMMM uuuu", (Locale) node.getProps().getOrDefault("locale", Locale.ROOT)));
-        g.drawString(font, font.plainSubstrByWidth(title, Math.max(1, (int) width - 72)), (int) x + 36, (int) y + 10, 0xFFEAF0F7, false);
-        arrow(g, x + 16, y + 14, -1); arrow(g, x + width - 16, y + 14, 1);
+        g.drawString(font, font.plainSubstrByWidth(title, Math.max(1, (int) width - 72)), (int) x + 36, (int) y + 10, colors.getOnSurface(), false);
+        arrow(g, x + 16, y + 14, -1, colors.getOnSurface()); arrow(g, x + width - 16, y + 14, 1, colors.getOnSurface());
         float cell = (width - 16) / 7f;
         for (int i = 0; i < 7; i++) {
             String label = java.time.DayOfWeek.of(i + 1).getDisplayName(java.time.format.TextStyle.SHORT,
                 (Locale) node.getProps().getOrDefault("locale", Locale.ROOT));
             label = font.plainSubstrByWidth(label, Math.max(1, (int) cell - 4));
-            g.drawString(font, label, (int) (x + 8 + i * cell + (cell - font.width(label)) / 2), (int) y + 32, 0xFF98A8BB, false);
+            g.drawString(font, label, (int) (x + 8 + i * cell + (cell - font.width(label)) / 2), (int) y + 32, colors.getMuted(), false);
         }
         LocalDate start = DateInput.calendarStart(month);
         for (int i = 0; i < 42; i++) {
@@ -90,20 +94,20 @@ final class DatePicker {
             if (date.getYear() < 1 || date.getYear() > 9999) continue;
             float left = x + 8 + i % 7 * cell, top = y + 44 + i / 7 * 22;
             boolean chosen = date.equals(selected), pointed = keyboard && date.equals(cursor);
-            if (chosen) ShapeRenderer.rounded(g, left + 1, top + 1, cell - 2, 20, 3, 3, 3, 3, 0xFF286F66);
+            if (chosen) ShapeRenderer.rounded(g, left + 1, top + 1, cell - 2, 20, 3, 3, 3, 3, colors.getSelection());
             if (pointed) ShapeRenderer.border(g, left + 1, top + 1, cell - 2, 20, 3, 1, accent, null, null);
             String label = Integer.toString(date.getDayOfMonth());
             g.drawString(font, label, (int) (left + (cell - font.width(label)) / 2), (int) top + 7,
-                chosen ? 0xFFFFFFFF : date.getMonth() == month.getMonth() ? 0xFFEAF0F7 : 0xFF98A8BB, false);
+                chosen || date.getMonth() == month.getMonth() ? colors.getOnSurface() : colors.getMuted(), false);
             if (date.equals(today)) g.fill((int) (left + cell / 2 - 2), (int) top + 18, (int) (left + cell / 2 + 2), (int) top + 19, accent);
         }
     }
 
     static void icon(GuiGraphics g, float x, float y, int color) {
-        PixelIconRenderer.draw(g, opus.core.PixelIcon.CALENDAR, x + 6, y + 6, color);
+        PixelIconRenderer.draw(g, PixelIcon.CALENDAR, x + 6, y + 6, color);
     }
-    private static void arrow(GuiGraphics g, float x, float y, int direction) {
-        PixelIconRenderer.draw(g, direction < 0 ? opus.core.PixelIcon.CHEVRON_LEFT : opus.core.PixelIcon.CHEVRON_RIGHT, x, y, 0xFFEAF0F7);
+    private static void arrow(GuiGraphics g, float x, float y, int direction, int color) {
+        PixelIconRenderer.draw(g, direction < 0 ? PixelIcon.CHEVRON_LEFT : PixelIcon.CHEVRON_RIGHT, x, y, color);
     }
     private static <T> void call(java.util.function.Consumer<T> callback, T value) {
         if (callback != null) callback.accept(value);

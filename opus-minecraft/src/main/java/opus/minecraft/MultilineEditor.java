@@ -5,6 +5,7 @@ import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.MultilineTextField;
 import net.minecraft.client.gui.components.Whence;
 import net.minecraft.util.StringUtil;
+import opus.core.Colors;
 import opus.core.TextEdits;
 
 /** Corrects selection-aware capacity and Unicode cursor movement in the host's multiline model. */
@@ -47,7 +48,7 @@ final class MultilineEditor extends MultilineTextField {
         setSelecting(true); seekCursor(Whence.ABSOLUTE, cursor); setSelecting(false);
     }
 
-    void draw(GuiGraphics g, Font font, int x, int y, int width, boolean focused) {
+    void draw(GuiGraphics g, Font font, int x, int y, int width, boolean focused, Colors colors, int caretColor) {
         int lineY = y;
         var selected = getSelected();
         for (var line : iterateLines()) {
@@ -55,12 +56,12 @@ final class MultilineEditor extends MultilineTextField {
             if (hasSelection() && selected.beginIndex() <= to && selected.endIndex() > from) {
                 int left = font.width(value().substring(from, Math.max(from, selected.beginIndex())));
                 int right = selected.endIndex() > to ? width : font.width(value().substring(from, selected.endIndex()));
-                g.fill(x + left, lineY - 1, x + right, lineY + 9, 0xFF365E6B);
+                g.fill(x + left, lineY - 1, x + right, lineY + 9, colors.getSelection());
             }
-            g.drawString(font, value().substring(from, to), x, lineY, 0xFFEAF0F7, false);
+            g.drawString(font, value().substring(from, to), x, lineY, colors.getOnSurface(), false);
             if (focused && getLineAtCursor() == (lineY - y) / 9 && (System.nanoTime() / 500_000_000L) % 2 == 0) {
                 int caret = x + font.width(value().substring(from, Math.clamp(cursor(), from, to)));
-                g.fill(caret, lineY - 1, caret + 1, lineY + 9, 0xFFB8F3E8);
+                g.fill(caret, lineY - 1, caret + 1, lineY + 9, caretColor);
             }
             lineY += 9;
         }

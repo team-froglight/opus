@@ -16,7 +16,7 @@ class JavaControlApiTest {
             Ui.radioButton(false, () -> {});
             Ui.radioGroup(List.of("one"), -1, index -> {});
             Ui.switchControl(false, value -> {});
-            Ui.dropdown(List.of("one"), -1, index -> {}, false, expanded -> {});
+            Ui.dropdown(List.of("one"), -1, index -> {});
             Ui.multiSelect(List.of("one"), Set.of(), values -> {});
             Ui.pagination(0, 1, page -> {});
             Ui.accordion("title", false, expanded -> {}, () -> {});

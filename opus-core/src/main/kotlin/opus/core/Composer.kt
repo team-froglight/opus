@@ -208,6 +208,17 @@ fun setContent(content: @Composable () -> Unit): Composition {
     return composition
 }
 
+/** Runs [block] inside a named group so its remembered slots stay stable between recompositions. */
+internal inline fun <T> composeGroup(name: String, block: (Composer) -> T): T {
+    val composer = Composition.currentComposer ?: error("$name outside composition")
+    composer.startGroup(name)
+    try {
+        return block(composer)
+    } finally {
+        composer.endGroup()
+    }
+}
+
 /** Retains a value in its composition slot. Use a key to reset that slot's value. */
 @Composable
 fun <T> remember(key: Any? = null, init: () -> T): T =

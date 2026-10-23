@@ -74,8 +74,11 @@ fun Modifier.paddingEach(start: Float = 0f, top: Float = 0f, end: Float = 0f, bo
 fun Modifier.size(width: Float, height: Float): Modifier = then(FixedSize(width, height))
 fun Modifier.width(width: Float): Modifier = then(FixedSize(width = width))
 fun Modifier.height(height: Float): Modifier = then(FixedSize(height = height))
+@JvmOverloads
 fun Modifier.fillMaxWidth(fraction: Float = 1f): Modifier = then(FillMax(widthFraction = fraction))
+@JvmOverloads
 fun Modifier.fillMaxHeight(fraction: Float = 1f): Modifier = then(FillMax(heightFraction = fraction))
+@JvmOverloads
 fun Modifier.fillMaxSize(fraction: Float = 1f): Modifier = then(FillMax(fraction, fraction))
 fun Modifier.weight(weight: Float): Modifier = then(Weight(weight))
 fun Modifier.offset(x: Float, y: Float): Modifier = then(Offset(x, y))
@@ -93,9 +96,13 @@ data class Cutout(val kind: CutoutKind = CutoutKind.NOTCH_TOP, val size: Float =
 
 enum class CutoutKind { NOTCH_TOP, NOTCH_START, HOLE_CENTER, TAB_END }
 
+@JvmOverloads
 fun Modifier.background(color: Int, cornerRadius: Float? = null): Modifier = then(Background(color, cornerRadius))
+@JvmOverloads
 fun Modifier.border(width: Float, color: Int, cornerRadius: Float? = null): Modifier = then(Border(width, color, cornerRadius))
+@JvmOverloads
 fun Modifier.outline(width: Float, color: Int, offset: Float = 0f): Modifier = then(Outline(width, color, offset))
+@JvmOverloads
 fun Modifier.shadow(blurRadius: Float, offsetX: Float = 0f, offsetY: Float = 0f, color: Int = 0x80000000.toInt()): Modifier =
     then(Shadow(blurRadius, offsetX, offsetY, color))
 
@@ -103,6 +110,7 @@ fun Modifier.clip(radius: Float): Modifier = then(CornerClip(radius, radius, rad
 fun Modifier.clip(topStart: Float = 0f, topEnd: Float = 0f, bottomEnd: Float = 0f, bottomStart: Float = 0f): Modifier =
     then(CornerClip(topStart, topEnd, bottomEnd, bottomStart))
 
+@JvmOverloads
 fun Modifier.cutout(kind: CutoutKind = CutoutKind.NOTCH_TOP, size: Float = 16f): Modifier = then(Cutout(kind, size))
 
 // ---- Interaction ----

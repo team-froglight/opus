@@ -3,8 +3,12 @@
 package opus.core
 
 import java.time.LocalDate
+import java.util.function.Consumer
 
-/** Shared input presentation and constraints. Labels remain visible when a value is entered. */
+/**
+ * Shared input presentation and constraints. Labels remain visible when a value is entered.
+ * A null [accent] follows the theme of the scope the field is composed in.
+ */
 data class InputOptions @JvmOverloads constructor(
     val placeholder: String = "",
     val helperText: String = "",
@@ -12,7 +16,7 @@ data class InputOptions @JvmOverloads constructor(
     val enabled: Boolean = true,
     val readOnly: Boolean = false,
     val maxLength: Int = 1024,
-    val accent: Int = LocalTheme.current.colors.accent
+    val accent: Int? = null
 ) {
     init { require(maxLength >= 0) { "maxLength must be nonnegative" } }
     fun withPlaceholder(value: String) = copy(placeholder = value)
@@ -21,7 +25,7 @@ data class InputOptions @JvmOverloads constructor(
     fun withEnabled(value: Boolean) = copy(enabled = value)
     fun withReadOnly(value: Boolean) = copy(readOnly = value)
     fun withMaxLength(value: Int) = copy(maxLength = value)
-    fun withAccent(value: Int) = copy(accent = value)
+    fun withAccent(value: Int?) = copy(accent = value)
     /** Hints are idle-state guidance, never painted underneath the active caret. */
     fun showsPlaceholder(value: String, focused: Boolean) = value.isEmpty() && placeholder.isNotEmpty() && !focused
     companion object { @JvmField val DEFAULT = InputOptions() }
@@ -91,9 +95,7 @@ fun DateField(value: String, onValueChange: (String) -> Unit, label: String,
     require(DateInput.accepts(value)) { "DateField value must be an ISO date draft (yyyy-MM-dd)" }
     require(options.maxLength >= 10) { "DateField maxLength must be at least 10 for a complete ISO date" }
     require(today.year in 1..9999) { "DateField today must be in years 1..9999" }
-    val composer = Composition.currentComposer ?: error("DateField outside composition")
-    composer.startGroup("DateField")
-    try {
+    composeGroup("DateField") { composer ->
         val expanded = composer.remember { mutableStateOf(false) }
         val month = composer.remember { mutableStateOf((DateInput.parseOrNull(value) ?: today).withDayOfMonth(1)) }
         val onExpanded: (Boolean) -> Unit = { open ->
@@ -107,11 +109,10 @@ fun DateField(value: String, onValueChange: (String) -> Unit, label: String,
         }
         input("DateField", value, onValueChange, label, modifier, options.copy(maxLength = minOf(10, options.maxLength)), 1, null,
             mapOf("expanded" to (expanded.value && options.enabled && !options.readOnly), "month" to month.value,
-                "today" to today, "locale" to locale, "onExpandedChange" to onExpanded,
-                "onMonthChange" to onMonth, "onDateSelect" to onDate,
-                "events" to ControlEvents(expandedChange = java.util.function.Consumer { onExpanded(it) },
-                    monthChange = java.util.function.Consumer { onMonth(it) }, dateSelect = java.util.function.Consumer { onDate(it) })))
-    } finally { composer.endGroup() }
+                "today" to today, "locale" to locale,
+                "events" to ControlEvents(expandedChange = Consumer { onExpanded(it) },
+                    monthChange = Consumer { onMonth(it) }, dateSelect = Consumer { onDate(it) })))
+    }
 }
 
 object DateInput {
@@ -142,11 +143,16 @@ object InputMetrics {
         if (options.helperText.isNotEmpty() || options.error != null) 14f else 0f
 }
 
+private val textInputTypes = setOf("TextField", "TextArea", "NumberField", "DateField")
+
+/** Whether [node] was emitted by a text-input composable ([TextField], [TextArea], [NumberField], [DateField]). */
+fun isTextInput(node: UiNode): Boolean = node.type in textInputTypes
+
 private fun input(type: String, value: String, onValueChange: (String) -> Unit, label: String,
                   modifier: Modifier, options: InputOptions, rows: Int, onSubmit: (() -> Unit)?, extra: Map<String, Any?> = emptyMap()) {
     val normalized = if (rows > 1) value.replace("\r\n", "\n").replace('\r', '\n') else value.replace("\r", "").replace("\n", "")
-    emit(type, modifier, mapOf("value" to TextEdits.limit(normalized, options.maxLength), "onValueChange" to onValueChange, "label" to label,
-        "inputOptions" to options, "rows" to rows, "enabled" to options.enabled, "onSubmit" to onSubmit) + extra +
-        mapOf("events" to ((extra["events"] as? ControlEvents) ?: ControlEvents()).copy(
-            textChange = java.util.function.Consumer { onValueChange(it) }, submit = onSubmit?.let { Runnable { it() } })))
+    emit(type, modifier, mapOf("value" to TextEdits.limit(normalized, options.maxLength), "label" to label,
+        "inputOptions" to options, "rows" to rows, "enabled" to options.enabled) + extra +
+        mapOf("events" to ((extra["events"] as? ControlEvents) ?: ControlEvents.NONE).copy(
+            textChange = Consumer { onValueChange(it) }, submit = onSubmit?.let { Runnable { it() } })))
 }

@@ -22,9 +22,7 @@ fun <T> AnimatedContent(target: T, modifier: Modifier = Modifier,
                         durationMillis: Int = 280, easing: Easing = Easing.EASE_IN_OUT,
                         distance: Float = 12f, content: @Composable (T) -> Unit) {
     require(durationMillis >= 0 && distance.isFinite() && distance >= 0f)
-    val composer = Composition.currentComposer ?: error("AnimatedContent outside composition")
-    composer.startGroup("AnimatedContent")
-    try {
+    composeGroup("AnimatedContent") { composer ->
         val state = composer.remember { ViewState(target) }
         val snap = composer.reducedMotion || durationMillis <= 1
         if (state.displayed != target && (snap || state.progress.value <= 0f)) {
@@ -37,10 +35,9 @@ fun <T> AnimatedContent(target: T, modifier: Modifier = Modifier,
         val style = transitionStyle(modifier, progress, transition, distance)
             .inputEnabled(!leaving && progress >= 1f)
         Box(style) {
-            composer.startGroup("View#${state.generation}")
-            try { content(state.displayed) } finally { composer.endGroup() }
+            composeGroup("View#${state.generation}") { content(state.displayed) }
         }
-    } finally { composer.endGroup() }
+    }
 }
 
 /** Keeps outgoing content mounted until its exit finishes, then releases its layout space and state. */
@@ -51,16 +48,14 @@ fun AnimatedVisibility(visible: Boolean, modifier: Modifier = Modifier,
                        durationMillis: Int = 220, easing: Easing = Easing.EASE_IN_OUT,
                        distance: Float = 8f, content: @Composable () -> Unit) {
     require(durationMillis >= 0 && distance.isFinite() && distance >= 0f)
-    val composer = Composition.currentComposer ?: error("AnimatedVisibility outside composition")
-    composer.startGroup("AnimatedVisibility")
-    try {
+    composeGroup("AnimatedVisibility") {
         val progress = animateFloat(if (visible) 1f else 0f, durationMillis, easing)
         if (visible || progress > 0f) {
             // Same direction on enter/exit preserves position during reversals.
             Box(transitionStyle(modifier, progress, transition, distance)
                 .inputEnabled(visible && progress >= 1f), content)
         }
-    } finally { composer.endGroup() }
+    }
 }
 
 private fun transitionStyle(modifier: Modifier, progress: Float,

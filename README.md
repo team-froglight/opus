@@ -111,7 +111,7 @@ Every successful branch push or manual CI run creates a GitHub prerelease such a
 at `01`, uses at least two digits and increments from existing tags. Atomic tag reservation
 handles overlapping builds without overwriting a tag. Interrupted releases can leave gaps.
 Existing tags retain their original names.
-Maven packages and JAR versions use `0.2.3-build.N.A`, after all three platforms pass.
+Maven packages and JAR versions use `0.3.0-build.N.A`, after all three platforms pass.
 `N` is GitHub's increasing workflow run number; `A` is its attempt number,
 so full workflow reruns cannot overwrite previous artifacts. Failed builds and pull requests do not publish.
 An initial job fixes the identity for all builds/publications. Retrying only failed jobs
@@ -145,14 +145,19 @@ and point a consumer's `opusRepository` at the generated `build/verification-mav
   as one empty page. Slider requires finite `min < max` and an in-range finite value.
   Progress values are finite and clamped to `[0,1]`; list counts cannot be negative.
 - Controls are controlled: callbacks propose a new value; update your state to accept it.
-  Built-ins expose typed `UiNode.events`, `options` and `selectedOptions` to adapters.
-  The raw `props` map remains an extension/compatibility boundary, not a callback API.
-- `Theme`/`Ui.theme` capture their scope on each emitted node. Defaults use its accent and
+  Transient presentation state is the exception: dropdowns and date fields own whether their
+  menu or calendar is open. Built-ins expose typed `UiNode.events`, `options` and
+  `selectedOptions` to adapters. Callbacks live only in `events`; custom nodes start from
+  `ControlEvents.NONE` and add callbacks with its `with...` methods.
+- `Theme`/`Ui.theme` capture their scope on each emitted node. `Colors` covers every color a
+  built-in paints (surfaces, text, outlines, overlays, selection, focus, error and disabled
+  states); selection and focus follow the accent unless set. Defaults use its accent and
   text color; `Text` typography uses the same size for measurement and rendering. Shapes
   supply button/input corner radii, and `Ui.surface` supplies surface color/radius.
   Explicit accents, text colors and modifier decoration override defaults. Small native
   control labels/editor glyphs keep Minecraft's font metrics; typography applies to `Text`.
-  Construct `InputOptions` inside the scope; `InputOptions.DEFAULT` is a prebuilt default.
+  `InputOptions.accent` is null by default and then follows the field's theme, so
+  `InputOptions.DEFAULT` is safe to share.
 - `DateField`/`Ui.dateField` accept `today` and `locale` for deterministic calendars. Defaults
   sample the host date/locale during composition, never during rendering. Dates use years
   1–9999 and ISO drafts; their length limit must allow a complete 10-character date.
@@ -160,8 +165,8 @@ and point a consumer's `opusRepository` at the generated `build/verification-mav
   splitting surrogate pairs. This does not rewrite caller state. Persisted/imported data
   should be validated by the application before being passed to an editor.
 
-`0.2.0` preserves Java overloads but Kotlin consumers must rebuild against the new artifact.
-Invalid controls that formerly produced ambiguous rendering now fail during composition.
+`0.3.0` changes the dropdown and event APIs; see [MIGRATION.md](MIGRATION.md).
+Invalid controls fail during composition rather than rendering ambiguously.
 
 ## Animations
 
@@ -216,7 +221,9 @@ Box(
 
 Offsets and opacity apply to descendants; hit testing uses those same coordinates. Buttons animate accent/disabled colors and hover feedback automatically. The gallery's **Styling → Transitions** demonstrates view changes, visibility and style transitions; the main gallery tabs also transition.
 
-Dropdowns animate their inline menu height over 180 ms, moving subsequent content with it. The trigger and menu have separate surfaces; shader-drawn arrows and checkmarks stay smooth at different GUI scales. Options become selectable after opening finishes, and closing rows cannot receive clicks. Clicking outside or pressing Escape dismisses an open menu; the dismissing click is consumed. Reduced motion makes opening and closing immediate. Leave the dropdown height automatic so its menu has room to expand.
+`Dropdown(options, selectedIndex, onSelect, modifier, placeholder, enabled, accent)` keeps the selection controlled and manages its own open state. Its menu floats over the following content instead of moving it, and reveals over 180 ms. The placeholder shows while `selectedIndex` is `-1`. Options become selectable after opening finishes, and closing rows cannot receive clicks. Clicking outside or pressing Escape or Tab closes the menu; the dismissing click is consumed. The selected row uses the theme selection color; the pointer or keyboard row uses the highlight color. Content height includes an open menu, so a dropdown near the bottom can be scrolled into view. Reduced motion makes opening and closing immediate.
+
+`Popup(onDismiss)` content stays in the layout. An outside click or Escape calls `onDismiss`; remove the popup from the composition to close it.
 
 ## Input components
 
@@ -240,7 +247,7 @@ Standalone `Icon` components use the largest whole-pixel scale fitting their all
 
 `NumberField` keeps a **string draft**, allowing empty text, `-`, and trailing decimal points during editing. It accepts decimal digits, an optional leading minus, and one dot. `NumberInput.parseOrNull(draft)` returns a finite number only when the draft is complete. Validate required values and ranges in your application and pass an explanatory `error`; the component does not silently replace incomplete values with zero.
 
-`DateField` accepts an ISO `yyyy-MM-dd` string draft. Use `DateInput.parseOrNull(draft)` to validate a complete date, including leap days. Its calendar button opens an inline month view; Alt+Down opens it from the keyboard. Arrows move between days, PageUp/PageDown change months, Home/End choose a month's first/last day, and Enter selects. Escape closes the picker. Calendar selection emits the same ISO string as typing.
+`DateField` accepts an ISO `yyyy-MM-dd` string draft. Use `DateInput.parseOrNull(draft)` to validate a complete date, including leap days. Its calendar button opens a month view that floats below the field like a dropdown menu; Alt+Down opens it from the keyboard. Arrows move between days, PageUp/PageDown change months, Home/End choose a month's first/last day, and Enter selects. Escape closes the picker. Calendar selection emits the same ISO string as typing.
 
 The Minecraft adapter uses Minecraft's text editing models for caret movement, selection and clipboard shortcuts, with rounded field surfaces and visible focus borders. It corrects multiline selection replacement at character limits and adds drag selection for single-line fields and up to 100 undo/redo steps (`Ctrl+Z`, `Ctrl+Y` or `Ctrl+Shift+Z`). Editor state follows the node's stable identity across recompositions; removing the node releases it. Programmatic value changes reset undo history. Read-only fields allow selection/copy; disabled fields skip focus. Text editing uses the Minecraft font, independently of custom fonts used by `Text`.
 
@@ -264,7 +271,8 @@ Read-only fields keep selection and copying available without displaying an edit
 | Enter in a text/number field | Submit, when a callback is supplied |
 | Enter in a text area | Insert a newline |
 | Alt+Down in a date field | Open the calendar picker |
-| Escape | Dismiss an open dropdown/calendar, then clear focus, then close the screen |
+| Arrows / Enter / Space on a closed dropdown | Open it on the current choice |
+| Escape | Dismiss an open dropdown/calendar, then a popup, then clear focus, then close the screen |
 
 Focus skips hidden controls, collapsed content, disabled inputs and outgoing transitions. Use `Modifier.inputEnabled(false)` to block an existing control or subtree. A focused text editor blocks swipe navigation, and multiline scrolling passes back to the screen at the editor's boundaries. The **Controls → Text inputs** gallery section demonstrates editable, validated, multiline, read-only and disabled fields.
 

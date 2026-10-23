@@ -1,8 +1,5 @@
 package opus.minecraft;
 
-import kotlin.Unit;
-import kotlin.jvm.functions.Function0;
-import kotlin.jvm.functions.Function1;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.AbstractWidget;
@@ -25,7 +22,7 @@ final class InputFields {
 
     InputFields(Font font) { this.font = font; }
     static boolean isInput(UiNode node) {
-        return switch (node.getType()) { case "TextField", "TextArea", "NumberField", "DateField" -> true; default -> false; };
+        return TextInputs.isTextInput(node);
     }
 
     void sync(VisualTree visuals, UiNode root) {
@@ -74,6 +71,24 @@ final class InputFields {
         finally { entry.widget.setY(widgetY); g.pose().popPose(); }
     }
 
+    /** Top edge of a DateField's floating calendar: just below the field, over its supporting text. */
+    static float pickerTop(UiNode node, float y) {
+        int rows = ((Number) node.getProps().get("rows")).intValue();
+        return y + InputMetrics.LABEL_HEIGHT + InputMetrics.fieldHeight(rows) + DateInput.CALENDAR_GAP;
+    }
+
+    void drawPicker(UiNode node, GuiGraphics g, float x, float y, float width) {
+        Entry entry = entries.get(node.getIdentity());
+        if (entry != null) entry.datePicker.draw(node, g, font, x, y, width, entry.accent());
+    }
+
+    void clickPicker(UiNode node, float x, float y, float width, double mouseX, double mouseY) {
+        Entry entry = entries.get(node.getIdentity());
+        if (entry == null || entry.options.getReadOnly()) return;
+        focus(node.getIdentity());
+        entry.datePicker.click(node, x, y, width, mouseX, mouseY);
+    }
+
     boolean click(UiNode node, double x, double y) {
         Entry entry = entries.get(node.getIdentity());
         if (entry == null || !entry.options.getEnabled()) return false;
@@ -84,8 +99,6 @@ final class InputFields {
             return true;
         }
         if (node.getType().equals("DateField") && !entry.options.getReadOnly()) {
-            if (DatePicker.expanded(node) && y >= entry.calendarY())
-                return entry.datePicker.click(node, entry.x, entry.calendarY(), entry.width, x, y);
             if (x >= entry.x + entry.width - 28 && y >= entry.y + InputMetrics.LABEL_HEIGHT && y <= entry.y + InputMetrics.LABEL_HEIGHT + entry.fieldHeight) {
                 if (DatePicker.expanded(node)) entry.datePicker.close(node); else entry.datePicker.open(node);
                 return true;
@@ -188,12 +201,14 @@ final class InputFields {
                     box.setMaxLength(options.getMaxLength());
                     box.setEditable(!options.getReadOnly());
                     ((Single) box).showCaret = interactive && !options.getReadOnly();
-                    box.setTextColor(options.getEnabled() ? node.getTheme().getColors().getOnSurface() : 0xFF98A8BB);
-                    box.setTextColorUneditable(0xFFBAC6D5);
+                    box.setTextColor(options.getEnabled() ? colors().getOnSurface() : colors().getDisabledContent());
+                    box.setTextColorUneditable(colors().getOnSurface());
                     box.setFilter(node.getType().equals("NumberField") ? NumberInput::accepts
                         : node.getType().equals("DateField") ? DateInput::accepts : value -> true);
                 } else {
                     ((Area) widget).showCaret = interactive && !options.getReadOnly();
+                    ((Area) widget).colors = colors();
+                    ((Area) widget).caretColor = accent();
                     ((Area) widget).setCharacterLimit(options.getMaxLength());
                 }
                 String value = (String) node.getProps().get("value");
@@ -208,7 +223,9 @@ final class InputFields {
         }
 
         String value() { return widget instanceof EditBox box ? box.getValue() : ((Area) widget).getValue(); }
-        int calendarY() { return (int) (y + node.getHeight() - DateInput.CALENDAR_HEIGHT); }
+        Colors colors() { return node.getTheme().getColors(); }
+        /** An explicit [InputOptions] accent, or else the theme accent of the field's scope. */
+        int accent() { return options.getAccent() != null ? options.getAccent() : colors().getAccent(); }
         void setValue(String value) { if (widget instanceof EditBox box) box.setValue(value); else ((Area) widget).setValue(value); }
 
         String stepped(int direction) {
@@ -231,7 +248,7 @@ final class InputFields {
             changed(next, true);
         }
 
-            void changed(String value, boolean record) {
+        void changed(String value, boolean record) {
             if (syncing || value.equals(lastValue)) return;
             if (record) history.record(lastValue);
             lastValue = value;
@@ -242,42 +259,42 @@ final class InputFields {
         void draw(GuiGraphics g, double mouseX, double mouseY, float scrollY) {
             int drawY = (int) (y - scrollY);
             int boxY = drawY + (int) InputMetrics.LABEL_HEIGHT;
-            int accent = options.getAccent();
+            Colors colors = colors();
+            int accent = accent();
             boolean hovered = interactive && mouseX >= x && mouseX <= x + width && mouseY >= boxY && mouseY <= boxY + fieldHeight;
-            int border = options.getError() != null ? 0xFFF29A9A : widget.isFocused() ? accent : hovered ? 0xFF61748B : 0xFF435367;
+            int border = options.getError() != null ? colors.getError() : widget.isFocused() ? accent : hovered ? colors.getMuted() : colors.getOutline();
             ShapeRenderer.border(g, x, boxY, width, fieldHeight, node.getTheme().getShapes().getCornerRadius(), widget.isFocused() ? 1.5f : 1f,
-                border, options.getEnabled() ? node.getTheme().getColors().getSurface() : 0xFF19212C, null);
+                border, options.getEnabled() ? colors.getSurface() : colors.getOverlay(), null);
             g.drawString(font, font.plainSubstrByWidth((String) node.getProps().get("label"), width), x, drawY,
-                options.getEnabled() ? node.getTheme().getColors().getOnSurface() : 0xFF98A8BB, false);
+                options.getEnabled() ? colors.getOnSurface() : colors.getDisabledContent(), false);
             // Scissor respects both the field and the enclosing scrolled screen.
             g.enableScissor(x + 3, boxY + 3, x + width - 3, boxY + fieldHeight - 3);
             try {
                 if (options.showsPlaceholder(value(), widget.isFocused())) {
-                    if (widget instanceof Area) g.drawWordWrap(font, Component.literal(options.getPlaceholder()), x + 8, boxY + 8, width - 24, 0xFF98A8BB);
+                    if (widget instanceof Area) g.drawWordWrap(font, Component.literal(options.getPlaceholder()), x + 8, boxY + 8, width - 24, colors.getMuted());
                     else g.drawString(font, font.plainSubstrByWidth(options.getPlaceholder(), widget.getWidth()),
-                        widget.getX(), widget.getY(), 0xFF98A8BB, false);
+                        widget.getX(), widget.getY(), colors.getMuted(), false);
                 }
                 if (node.getProps().get("leadingIcon") instanceof PixelIcon icon) {
                     PixelIconRenderer.draw(g, icon, x + InputMetrics.CONTENT_INSET + PixelIcon.SIZE / 2f,
-                        boxY + fieldHeight / 2f, options.getEnabled() ? 0xFF98A8BB : 0xFF61748B);
+                        boxY + fieldHeight / 2f, options.getEnabled() ? colors.getMuted() : colors.getDisabledContent());
                 }
                 widget.render(g, (int) mouseX, (int) mouseY, 0);
             } finally { g.disableScissor(); }
             String support = options.getError() != null ? options.getError() : options.getHelperText();
             if (!support.isEmpty()) g.drawWordWrap(font, Component.literal(support), x, boxY + fieldHeight + 5, width,
-                options.getError() != null ? 0xFFF29A9A : 0xFF98A8BB);
+                options.getError() != null ? colors.getError() : colors.getMuted());
             if (node.getType().equals("DateField")) {
-                DatePicker.icon(g, x + width - 21, boxY + 7, interactive && !options.getReadOnly() ? options.getAccent() : 0xFF98A8BB);
-                if (DatePicker.expanded(node)) datePicker.draw(node, g, font, x, calendarY() - scrollY, width, options.getAccent());
+                DatePicker.icon(g, x + width - 21, boxY + 7, interactive && !options.getReadOnly() ? accent : colors.getMuted());
             } else if (node.getType().equals("NumberField")) {
                 float left = x + width - 28, middle = boxY + fieldHeight / 2f;
-                ShapeRenderer.line(g, left, boxY + 3, left, boxY + fieldHeight - 3, 1, 0xFF435367);
-                ShapeRenderer.line(g, left + 3, middle, x + width - 3, middle, 1, 0xFF435367);
+                ShapeRenderer.line(g, left, boxY + 3, left, boxY + fieldHeight - 3, 1, colors.getOutline());
+                ShapeRenderer.line(g, left + 3, middle, x + width - 3, middle, 1, colors.getOutline());
                 for (int direction : new int[]{1, -1}) {
                     float cy = boxY + fieldHeight * (direction == 1 ? 0.25f : 0.75f);
                     boolean available = stepped(direction) != null;
                     boolean over = mouseX >= left && mouseX <= x + width && Math.abs(mouseY - cy) < fieldHeight / 4f;
-                    int color = !available ? 0xFF61748B : over ? options.getAccent() : 0xFFEAF0F7;
+                    int color = !available ? colors.getDisabledContent() : over ? accent : colors.getOnSurface();
                     PixelIconRenderer.draw(g, direction == 1 ? PixelIcon.CHEVRON_UP : PixelIcon.CHEVRON_DOWN, left + 14, cy, color);
                 }
             }
@@ -311,6 +328,8 @@ final class InputFields {
 
     private final class Area extends AbstractScrollWidget {
         private boolean showCaret = true;
+        private Colors colors = new Colors();
+        private int caretColor = colors.getAccent();
         private MultilineEditor editor;
         private java.util.function.Consumer<String> listener = ignored -> {};
         Area(int width, int height, Component label) {
@@ -367,14 +386,14 @@ final class InputFields {
         @Override protected int getInnerHeight() { return editor.getLineCount() * 9; }
         @Override protected double scrollRate() { return 9; }
         @Override protected void renderContents(GuiGraphics g, int x, int y, float partialTick) {
-            editor.draw(g, font, getX() + 4, getY() + 4, getWidth() - 8, isFocused() && showCaret);
+            editor.draw(g, font, getX() + 4, getY() + 4, getWidth() - 8, isFocused() && showCaret, colors, caretColor);
         }
         @Override protected void renderBackground(GuiGraphics g) {}
         @Override protected void renderDecorations(GuiGraphics g) {
             if (getMaxScrollAmount() > 0) {
                 float thumb = Math.max(10, getHeight() * getHeight() / (float) (getInnerHeight() + 8));
                 float top = getY() + (float) (scrollAmount() / getMaxScrollAmount()) * (getHeight() - thumb);
-                ShapeRenderer.rounded(g, getX() + getWidth() + 3, top, 2, thumb, 1, 1, 1, 1, 0xFF61748B);
+                ShapeRenderer.rounded(g, getX() + getWidth() + 3, top, 2, thumb, 1, 1, 1, 1, colors.getMuted());
             }
         }
         boolean scroll(double x, double y, double dx, double dy) {

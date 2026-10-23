@@ -1,5 +1,6 @@
 package opus.core
 
+// Top-level so enum entry initializers can read it before the companion object exists.
 private const val PIXEL_GRID_SIZE = 9
 
 /** One nine-pixel grid for every UI symbol. Hosts draw integer cells without filtering. */
@@ -31,7 +32,7 @@ enum class PixelIcon(private vararg val rows: String) {
     }
 
     companion object {
-        const val SIZE = 9
+        const val SIZE = PIXEL_GRID_SIZE
         /** Whole-pixel scale for the allocated box, with the native 9-unit grid as the minimum size. */
         @JvmStatic fun scaleForSize(width: Float, height: Float): Int {
             require(width.isFinite() && height.isFinite() && width >= 0f && height >= 0f)

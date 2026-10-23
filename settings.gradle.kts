@@ -1,6 +1,5 @@
 pluginManagement {
     val mdgVersion = providers.gradleProperty("mdg_plugin_version").get()
-    val kotlinVersion = providers.gradleProperty("kotlin_plugin_version").get()
     val foojayVersion = providers.gradleProperty("foojay_plugin_version").get()
 
     repositories {
@@ -14,7 +13,6 @@ pluginManagement {
 
     plugins {
         id("net.neoforged.moddev") version mdgVersion
-        id("org.jetbrains.kotlin.jvm") version kotlinVersion
         id("org.gradle.toolchains.foojay-resolver-convention") version foojayVersion
     }
 }

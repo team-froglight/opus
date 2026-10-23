@@ -1,4 +1,33 @@
-# API naming migration
+# Migrating to 0.3.0
+
+There is no stable API yet; 0.3.0 removes compatibility shims and fixes control behavior.
+
+| Previous | Current |
+| --- | --- |
+| `Dropdown(options, index, onSelect, expanded, onExpandedChange, modifier)` | `Dropdown(options, index, onSelect, modifier, placeholder, enabled, accent)`; the dropdown owns its open state |
+| `Ui.dropdown(options, index, onSelect, expanded, onExpandedChange, modifier)` | `Ui.dropdown(options, index, onSelect, modifier, placeholder, enabled, accent)` |
+| Raw callback props such as `props["onSelect"]` | Typed `UiNode.events`; custom nodes use `ControlEvents.NONE.withSelect(...)` |
+| `Toggle(value, onValueChange)` | `Switch(checked, onCheckedChange)` |
+| `LazyColumn(count, modifier, overscan) { }` | `ListColumn(count, modifier) { }` |
+| `UiNode.isOffview(...)` | `UiNode.isOutsideViewport(...)` |
+| `opus.yoga.YogaFacade` | Removed; `YogaTree` owns the native tree |
+| `ControlMetrics.INACTIVE_TRACK_COLOR` | `Colors.inactive` |
+| `DropdownMetrics.height(count, progress)` | Removed; a dropdown's layout height is always `HEADER_HEIGHT` |
+| `DropdownMetrics.optionAt(nodeY, count)` | `optionAt(menuY, count)`, measured from the menu's top edge |
+| `UiRenderer.dismissDropdowns(composition)` | `UiRenderer.dismissOverlays(composition)` |
+| `InputOptions.accent: Int` (theme accent captured at construction) | `Int?`; `null` follows the field's theme |
+
+Behavior changes:
+
+- Open dropdown menus and date-field calendars float over the following content instead of
+  pushing it down. Give containers no extra height for them.
+- `Popup(onDismiss)` now receives `onDismiss` on an outside click or Escape.
+- `Heading` requires level 1, 2 or 3.
+- `Colors` gains `onAccent`, `muted`, `outline`, `overlay`, `surfaceVariant`, `highlight`,
+  `selection`, `focus`, `error`, `inactive` and `disabledContent`. Every built-in reads its
+  colors from the theme; the first three constructor parameters are unchanged.
+
+# API naming migration (0.2)
 
 The library name belongs in package and artifact names. Classes now describe their responsibilities.
 

@@ -24,7 +24,9 @@ class ControlContractTest {
             assertEquals(18f, text[0].props["textSize"])
             assertEquals(outer, text[0].theme)
             assertEquals(3, c.root.findAll("Button").single().props["accent"])
-            assertEquals(3, (c.root.findAll("TextField").single().props["inputOptions"] as InputOptions).accent)
+            val field = c.root.findAll("TextField").single()
+            assertNull((field.props["inputOptions"] as InputOptions).accent)
+            assertEquals(3, field.theme.colors.accent)
             assertEquals(1, c.root.findAll("Box").single().modifier.elements().filterIsInstance<Background>().single().color)
         }
         assertEquals(Theme(), LocalTheme.current)
@@ -36,7 +38,7 @@ class ControlContractTest {
         var choice = -1
         var result: Set<Int>? = null
         setContent {
-            Dropdown(options, -1, { choice = it }, false, {})
+            Dropdown(options, -1, { choice = it })
             MultiSelect(options, selected, { result = it })
         }.use { c ->
             options.clear(); selected.clear()
@@ -55,7 +57,8 @@ class ControlContractTest {
 
     @Test fun invalidControlContractsFailAtCompositionInsteadOfDuringRendering() {
         val invalid: List<() -> Unit> = listOf(
-            { Dropdown(emptyList(), 0, {}, false, {}) },
+            { Dropdown(emptyList(), 0, {}) },
+            { Heading("Too deep", level = 4) },
             { RadioGroup(listOf("one"), 2, {}) },
             { MultiSelect(listOf("one"), setOf(-1), {}) },
             { Slider(Float.NaN, {}) },
@@ -85,11 +88,23 @@ class ControlContractTest {
         assertFailsWith<IllegalArgumentException> { setContent { DateField("", {}, "Date", options = InputOptions(maxLength = 5)) } }
     }
 
-    @Test fun legacyExtensionDataReportsInvalidTypesAtItsBoundary() {
+    @Test fun customNodesReportInvalidDataAndOnlyExposeTypedEvents() {
         val node = UiNode("Dropdown")
         node.props["options"] = listOf(12)
         assertFailsWith<IllegalArgumentException> { node.options }
-        node.props["onSelect"] = "not a callback"
-        assertFailsWith<IllegalArgumentException> { node.events }
+        node.props["onSelect"] = { _: Int -> }
+        assertSame(ControlEvents.NONE, node.events)
+        var chosen = -1
+        node.props["events"] = ControlEvents.NONE.withSelect { chosen = it }
+        node.events.select!!.accept(1)
+        assertEquals(1, chosen)
+    }
+
+    @Test fun popupsExposeTheirDismissal() {
+        var dismissed = false
+        setContent { Popup({ dismissed = true }) { Text("Hi") } }.use { c ->
+            c.root.findAll("Popup").single().events.dismiss!!.run()
+            assertTrue(dismissed)
+        }
     }
 }

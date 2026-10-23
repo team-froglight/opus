@@ -1,42 +1,55 @@
 package opus.minecraft;
 
-import kotlin.Unit;
 import com.mojang.blaze3d.systems.RenderSystem;
-import kotlin.jvm.functions.Function0;
-import kotlin.jvm.functions.Function1;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.Style;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.ItemStack;
+import opus.core.ArrowDirection;
 import opus.core.Background;
 import opus.core.Border;
 import opus.core.Clickable;
+import opus.core.Colors;
+import opus.core.Composition;
+import opus.core.ControlMetrics;
 import opus.core.CornerClip;
 import opus.core.Cutout;
+import opus.core.DropdownMetrics;
+import opus.core.FocusNavigation;
+import opus.core.InputMetrics;
 import opus.core.Modifier;
 import opus.core.Modifiers;
-import opus.core.Composition;
-import opus.core.DropdownMetrics;
-import opus.core.UiNode;
-import opus.core.VisualTree;
-import opus.core.VisualBounds;
 import opus.core.Outline;
 import opus.core.Padding;
+import opus.core.PixelIcon;
 import opus.core.Shadow;
 import opus.core.TextRole;
+import opus.core.UiNode;
+import opus.core.VisualBounds;
+import opus.core.VisualTree;
 import opus.yoga.TextMeasurer;
 import opus.yoga.YogaTree;
+import org.lwjgl.glfw.GLFW;
 
-import java.util.List;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+import java.util.function.Consumer;
 
 /**
  * Draws an UiNode tree with GuiGraphics + the direct-GL style layer.
  * Skips subtrees outside the viewport; supports screen-level vertical scrolling with scissor.
+ * Dropdown menus and calendars float in an overlay layer above the tree and receive input first.
  */
-public class UiRenderer {
+public class UiRenderer implements AutoCloseable {
     private final Font font;
     private final YogaTree yoga;
     private double hoverContentX;
@@ -48,6 +61,7 @@ public class UiRenderer {
     private boolean keyboardFocus;
     private List<UiNode> focusTargets = List.of();
     private VisualTree visuals;
+    private List<Overlay> overlays = List.of();
     private float[] drawColor = {1f, 1f, 1f, 1f};
     private final Map<String, HoverFeedback> hoverFeedback = new HashMap<>();
     private long frameNanos;
@@ -55,7 +69,12 @@ public class UiRenderer {
     private int layoutVersion = -1;
     private float layoutWidth, layoutHeight;
     private TooltipAnchor pendingTooltip;
-    private record TooltipAnchor(String text, float top, float bottom) {}
+    private record TooltipAnchor(String text, float top, float bottom, Colors colors) {}
+
+    /** Floating content owned by a node, in content coordinates. Later overlays are on top. */
+    private record Overlay(UiNode owner, float x, float y, float width, float height) {
+        boolean contains(double px, double py) { return px >= x && px < x + width && py >= y && py < y + height; }
+    }
 
     public UiRenderer(Font font, TextMeasurer measurer) {
         this.font = font;
@@ -67,6 +86,17 @@ public class UiRenderer {
         return yoga;
     }
 
+    /** Releases the native layout tree. The renderer must not be used afterwards. */
+    @Override
+    public void close() {
+        yoga.close();
+        visuals = null;
+        overlays = List.of();
+        focusTargets = List.of();
+        hoverFeedback.clear();
+        draggingSlider = null;
+    }
+
     public void layout(Composition composition, float width, float height) {
         yoga.layout(composition.getRoot(), composition, width, height);
         visuals = new VisualTree(composition.getRoot());
@@ -74,8 +104,11 @@ public class UiRenderer {
         layoutWidth = width;
         layoutHeight = height;
         hoverFeedback.keySet().removeIf(id -> visuals.find(id) == null);
-        focusTargets = opus.core.FocusNavigation.targets(composition.getRoot(), visuals);
+        focusTargets = FocusNavigation.targets(composition.getRoot(), visuals);
         inputs.sync(visuals, composition.getRoot());
+        List<Overlay> found = new ArrayList<>();
+        collectOverlays(composition.getRoot(), found);
+        overlays = List.copyOf(found);
         if (focusedId != null && focusTargets.stream().noneMatch(node -> focusedId.equals(node.getIdentity()))) setFocus(null, false);
         if (draggingSlider != null) {
             String identity = draggingSlider.getIdentity();
@@ -85,6 +118,30 @@ public class UiRenderer {
         }
     }
 
+    private void collectOverlays(UiNode node, List<Overlay> out) {
+        VisualBounds bounds = visuals.bounds(node);
+        if (bounds == null || bounds.getOpacity() <= 0f) return;
+        switch (node.getType()) {
+            case "Dropdown" -> {
+                if (floatProp(node, "expansion", 0f) > 0f) out.add(new Overlay(node, bounds.getX(),
+                    bounds.getY() + DropdownMetrics.HEADER_HEIGHT + DropdownMetrics.MENU_GAP,
+                    node.getWidth(), DropdownMetrics.menuHeight(node.getOptions().size())));
+            }
+            case "DateField" -> {
+                if (DatePicker.expanded(node)) out.add(new Overlay(node, bounds.getX(),
+                    InputFields.pickerTop(node, bounds.getY()), Math.max(24, node.getWidth()), DatePicker.HEIGHT));
+            }
+            default -> { }
+        }
+        for (UiNode child : node.getChildren()) collectOverlays(child, out);
+    }
+
+    private Overlay overlayAt(double x, double y) {
+        for (int i = overlays.size() - 1; i >= 0; i--) if (overlays.get(i).contains(x, y)) return overlays.get(i);
+        return null;
+    }
+
+    /** Includes floating menus, so an open menu near the bottom can be scrolled into view. */
     public float contentHeight(Composition composition) {
         // The root is laid out against the previous content height to keep
         // scrolling stable across a recompose. Its own height is therefore
@@ -93,6 +150,7 @@ public class UiRenderer {
         for (UiNode child : composition.getRoot().getChildren()) {
             bottom = Math.max(bottom, subtreeBottom(child));
         }
+        for (Overlay overlay : overlays) bottom = Math.max(bottom, overlay.y() + overlay.height());
         return bottom;
     }
 
@@ -124,6 +182,11 @@ public class UiRenderer {
         g.pose().translate(0, -scrollY, 0);
         try {
             drawChildren(composition.getRoot(), g, scrollY, viewW, viewH);
+            g.pose().translate(0, 0, 300);
+            for (Overlay overlay : overlays) {
+                VisualBounds bounds = visuals.bounds(overlay.owner());
+                withOpacity(g, bounds.getOpacity(), () -> drawOverlay(overlay, g, scrollY));
+            }
         } finally {
             g.pose().popPose();
             g.disableScissor();
@@ -140,18 +203,23 @@ public class UiRenderer {
     private void drawNode(UiNode node, GuiGraphics g, float scrollY, float viewW, float viewH) {
         VisualBounds bounds = visuals == null ? null : visuals.bounds(node);
         if (bounds == null || bounds.getOpacity() <= 0f) return;
+        withOpacity(g, bounds.getOpacity(), () -> paintNode(node, g, scrollY, viewW, viewH));
+    }
+
+    /** Multiplies the host's shader alpha for [paint], flushing only when the color actually changes. */
+    private void withOpacity(GuiGraphics g, float opacity, Runnable paint) {
         float[] current = RenderSystem.getShaderColor();
-        float alpha = drawColor[3] * bounds.getOpacity();
+        float alpha = drawColor[3] * opacity;
         if (current[0] == drawColor[0] && current[1] == drawColor[1]
             && current[2] == drawColor[2] && current[3] == alpha) {
-            paintNode(node, g, scrollY, viewW, viewH);
+            paint.run();
             return;
         }
         float[] previous = current.clone();
         g.flush();
         RenderSystem.setShaderColor(drawColor[0], drawColor[1], drawColor[2], alpha);
         try {
-            paintNode(node, g, scrollY, viewW, viewH);
+            paint.run();
         } finally {
             g.flush();
             RenderSystem.setShaderColor(previous[0], previous[1], previous[2], previous[3]);
@@ -186,9 +254,9 @@ public class UiRenderer {
             }
         }
 
-        VisualPosition position = visualPosition(node);
-        float x = position.x();
-        float y = position.y();
+        VisualBounds bounds = visuals.bounds(node);
+        float x = bounds.getX();
+        float y = bounds.getY();
         float w = node.getWidth();
         float h = node.getHeight();
         if (node.getChildren().isEmpty() && (x + w < 0 || y + h < scrollY || x > viewW || y > scrollY + viewH)) return;
@@ -214,32 +282,41 @@ public class UiRenderer {
         }
 
         drawContent(node, g, x, y, w, h, radius, padding, scrollY);
-        if (keyboardFocus && java.util.Objects.equals(focusedId, node.getIdentity()) && !InputFields.isInput(node)) {
+        if (hasKeyboardFocus(node) && !InputFields.isInput(node)) {
             float focusY = y, focusH = h;
-            if (node.getType().equals("RadioGroup") || node.getType().equals("MultiSelect")) {
-                focusY += keyboard.option() * 18; focusH = 16;
-            } else if (node.getType().equals("Accordion")) focusH = 18;
-            else if (node.getType().equals("Dropdown")) {
-                focusH = DropdownMetrics.HEADER_HEIGHT;
-                if (bool(node, "expanded", false) && floatProp(node, "expansion", 1f) >= 1f) {
-                    focusY += DropdownMetrics.HEADER_HEIGHT + DropdownMetrics.MENU_GAP + DropdownMetrics.MENU_PADDING + keyboard.option() * DropdownMetrics.ROW_HEIGHT;
-                    focusH = DropdownMetrics.ROW_HEIGHT;
+            switch (node.getType()) {
+                case "RadioGroup", "MultiSelect" -> {
+                    focusY += keyboard.option() * ControlMetrics.OPTION_ROW_HEIGHT;
+                    focusH = ControlMetrics.OPTION_ROW_HEIGHT - 2;
                 }
+                case "Accordion" -> focusH = ControlMetrics.ACCORDION_HEADER_HEIGHT;
+                // An open menu highlights its keyboard row instead.
+                case "Dropdown" -> focusH = DropdownMetrics.HEADER_HEIGHT;
+                default -> { }
             }
-            ShapeRenderer.outline(g, x, focusY, w, focusH, 4, 1.2f, 2, 0xFF8AE4D4, null);
+            ShapeRenderer.outline(g, x, focusY, w, focusH, 4, 1.2f, 2, colors(node).getFocus(), null);
         }
         if (node.getType().equals("Accordion") && !bool(node, "expanded", false)) return;
         drawChildren(node, g, scrollY, viewW, viewH);
         if (node.getType().equals("Tooltip")) {
             String tip = str(node, "tip", "");
-            if (visuals.bounds(node).getInputEnabled() && !tip.isEmpty() && hoverContentX >= x && hoverContentX <= x + w && hoverContentY >= y && hoverContentY <= y + h) {
-                pendingTooltip = new TooltipAnchor(tip, y, y + h);
+            if (bounds.getInputEnabled() && !tip.isEmpty() && isHovered(x, y, w, h)) {
+                pendingTooltip = new TooltipAnchor(tip, y, y + h, colors(node));
             }
         }
     }
 
+    private boolean hasKeyboardFocus(UiNode node) {
+        return keyboardFocus && Objects.equals(focusedId, node.getIdentity());
+    }
+
+    private boolean isHovered(float x, float y, float w, float h) {
+        return hoverContentX >= x && hoverContentX <= x + w && hoverContentY >= y && hoverContentY <= y + h;
+    }
+
     private void drawTooltip(GuiGraphics g, int mouseX, float scrollY, float viewW, float viewH) {
-        var lines = font.split(net.minecraft.network.chat.Component.literal(pendingTooltip.text()), Math.max(1, (int) viewW - 28));
+        Colors colors = pendingTooltip.colors();
+        var lines = font.split(Component.literal(pendingTooltip.text()), Math.max(1, (int) viewW - 28));
         int width = lines.stream().mapToInt(font::width).max().orElse(0) + 12;
         int height = lines.size() * font.lineHeight + 12;
         float x = Math.max(4, Math.min(mouseX + 10, viewW - width - 4));
@@ -249,12 +326,50 @@ public class UiRenderer {
         g.pose().pushPose();
         g.pose().translate(0, 0, 400);
         try {
-            ShapeRenderer.border(g, x, y, width, height, 4, 1, 0xFF465568, 0xFF111B28, null);
+            ShapeRenderer.border(g, x, y, width, height, 4, 1, colors.getOutline(), colors.getOverlay(), null);
             for (int i = 0; i < lines.size(); i++) {
-                g.drawString(font, lines.get(i), (int) x + 6, (int) y + 6 + i * font.lineHeight, 0xFFFFFFFF, false);
+                g.drawString(font, lines.get(i), (int) x + 6, (int) y + 6 + i * font.lineHeight, colors.getOnSurface(), false);
             }
             g.flush();
         } finally { g.pose().popPose(); }
+    }
+
+    private void drawOverlay(Overlay overlay, GuiGraphics g, float scrollY) {
+        UiNode node = overlay.owner();
+        if (node.getType().equals("DateField")) {
+            inputs.drawPicker(node, g, overlay.x(), overlay.y(), overlay.width());
+            return;
+        }
+        Colors colors = colors(node);
+        List<String> options = node.getOptions();
+        float progress = floatProp(node, "expansion", 1f);
+        float x = overlay.x(), y = overlay.y(), w = overlay.width();
+        // Reveal from the header downwards while the menu opens or closes.
+        g.enableScissor((int) x, (int) Math.floor(y - scrollY), (int) Math.ceil(x + w), (int) Math.ceil(y + overlay.height() * progress - scrollY));
+        try {
+            ShapeRenderer.border(g, x, y, w, overlay.height(), 6f, 1f, colors.getOutline(), colors.getOverlay(), null);
+            int selected = intProp(node, "selectedIndex", -1);
+            int active = activeMenuRow(overlay);
+            for (int i = 0; i < options.size(); i++) {
+                float rowY = y + DropdownMetrics.MENU_PADDING + i * DropdownMetrics.ROW_HEIGHT;
+                if (i == selected) ShapeRenderer.rounded(g, x + 4, rowY, w - 8, DropdownMetrics.ROW_HEIGHT - 1, 4, 4, 4, 4, colors.getSelection());
+                if (i == active) ShapeRenderer.rounded(g, x + 4, rowY, w - 8, DropdownMetrics.ROW_HEIGHT - 1, 4, 4, 4, 4, colors.getHighlight());
+                String label = font.plainSubstrByWidth(options.get(i), Math.max(0, (int) w - 36));
+                g.drawString(font, label, (int) x + 10, (int) (rowY + (DropdownMetrics.ROW_HEIGHT - font.lineHeight) / 2),
+                    colors.getOnSurface(), false);
+                if (i == selected) drawCheck(g, x + w - 24, rowY + 3, intProp(node, "accent", colors.getAccent()));
+            }
+        } finally { g.disableScissor(); }
+    }
+
+    /** The row under the pointer, or else the keyboard row while the dropdown has keyboard focus. */
+    private int activeMenuRow(Overlay overlay) {
+        UiNode node = overlay.owner();
+        if (floatProp(node, "expansion", 1f) < 1f || !visuals.bounds(node).getInputEnabled()) return -1;
+        if (overlay.contains(hoverContentX, hoverContentY) && hoverContentX >= overlay.x() + 4 && hoverContentX < overlay.x() + overlay.width() - 4) {
+            return DropdownMetrics.optionAt((float) (hoverContentY - overlay.y()), node.getOptions().size());
+        }
+        return hasKeyboardFocus(node) ? keyboard.option() : -1;
     }
 
     /** Widgets that paint their own visuals (bg included) instead of generic bg. */
@@ -268,12 +383,16 @@ public class UiRenderer {
 
     private void drawContent(UiNode node, GuiGraphics g, float x, float y, float w, float h,
                              float radius, Padding padding, float scrollY) {
+        if (InputFields.isInput(node)) {
+            inputs.draw(node, g, hoverContentX, hoverContentY, scrollY);
+            return;
+        }
+        Colors colors = colors(node);
         switch (node.getType()) {
-            case "TextField", "TextArea", "NumberField", "DateField" -> inputs.draw(node, g, hoverContentX, hoverContentY, scrollY);
             case "Icon" -> {
-                if (node.getProps().get("icon") instanceof opus.core.PixelIcon icon)
+                if (node.getProps().get("icon") instanceof PixelIcon icon)
                     PixelIconRenderer.draw(g, icon, x + w / 2f, y + h / 2f,
-                        intProp(node, "color", node.getTheme().getColors().getOnSurface()), opus.core.PixelIcon.scaleForSize(w, h));
+                        intProp(node, "color", colors.getOnSurface()), PixelIcon.scaleForSize(w, h));
             }
             case "Text" -> {
                 // Yoga reserves padding in the node's measured size; draw the
@@ -287,7 +406,7 @@ public class UiRenderer {
                 float scale = textSize / 9f;
                 String line = text.contains("\n") ? text.substring(0, text.indexOf('\n')) : text;
                 String fontId = str(node, "fontId", null);
-                int textColor = intProp(node, "color", 0xFFFFFFFF);
+                int textColor = intProp(node, "color", colors.getOnSurface());
                 if (Fonts.isCustom(fontId)
                     && Fonts.draw(g, fontId, line, textX, textY, textSize, textColor)) {
                     break;
@@ -297,10 +416,8 @@ public class UiRenderer {
                 g.pose().scale(scale, scale, 1f);
                 if (fontId != null && !Fonts.isCustom(fontId)) {
                     try {
-                        var style = net.minecraft.network.chat.Style.EMPTY
-                            .withFont(ResourceLocation.parse(fontId));
-                        g.drawString(font, net.minecraft.network.chat.Component.literal(line).withStyle(style),
-                            0, 0, textColor, false);
+                        var style = Style.EMPTY.withFont(ResourceLocation.parse(fontId));
+                        g.drawString(font, Component.literal(line).withStyle(style), 0, 0, textColor, false);
                     } catch (Exception e) {
                         g.drawString(font, line, 0, 0, textColor, false);
                     }
@@ -311,84 +428,77 @@ public class UiRenderer {
             }
             case "Button" -> {
                 boolean enabled = bool(node, "enabled", true);
-                int accent = intProp(node, "accent", node.getTheme().getColors().getAccent());
-                boolean hovered = enabled && visuals.bounds(node).getInputEnabled() && hoverContentX >= x && hoverContentX <= x + w && hoverContentY >= y && hoverContentY <= y + h;
+                int accent = intProp(node, "accent", colors.getAccent());
+                boolean hovered = enabled && visuals.bounds(node).getInputEnabled() && isHovered(x, y, w, h);
                 float hover = node.getIdentity() == null ? (hovered ? 1f : 0f)
                     : hoverFeedback.computeIfAbsent(node.getIdentity(), ignored -> new HoverFeedback())
                         .sample(hovered, frameNanos, durationScale);
                 int bgc = brighten(accent, Math.round(18f * hover));
                 ShapeRenderer.rounded(g, x, y, w, Math.max(h, 24f), radius, radius, radius, radius, bgc);
-                if (node.getProps().get("arrowDirection") instanceof opus.core.ArrowDirection direction) {
-                    float cx = x + w / 2f, cy = y + h / 2f;
-                    int color = enabled ? node.getTheme().getColors().getOnSurface() : 0xFF89939F;
-                    PixelIconRenderer.draw(g, direction == opus.core.ArrowDirection.LEFT ? opus.core.PixelIcon.ARROW_LEFT : opus.core.PixelIcon.ARROW_RIGHT, cx, cy, color);
-                } else if (node.getProps().get("icon") instanceof opus.core.PixelIcon icon) {
-                    PixelIconRenderer.draw(g, icon, x + w / 2f, y + h / 2f,
-                        enabled ? node.getTheme().getColors().getOnSurface() : 0xFF89939F);
+                int content = enabled ? colors.getOnSurface() : colors.getDisabledContent();
+                if (node.getProps().get("arrowDirection") instanceof ArrowDirection direction) {
+                    PixelIconRenderer.draw(g, direction == ArrowDirection.LEFT ? PixelIcon.ARROW_LEFT : PixelIcon.ARROW_RIGHT,
+                        x + w / 2f, y + h / 2f, content);
+                } else if (node.getProps().get("icon") instanceof PixelIcon icon) {
+                    PixelIconRenderer.draw(g, icon, x + w / 2f, y + h / 2f, content);
                 } else {
-                    g.drawCenteredString(font, str(node, "text", ""), (int) (x + w / 2), (int) (y + h / 2 - 4 + opus.core.InputMetrics.TEXT_OFFSET_Y),
-                        enabled ? node.getTheme().getColors().getOnSurface() : 0xFF9A9AA5);
+                    g.drawCenteredString(font, str(node, "text", ""), (int) (x + w / 2), (int) (y + h / 2 - 4 + InputMetrics.TEXT_OFFSET_Y), content);
                 }
             }
             case "Checkbox" -> {
                 boolean checked = bool(node, "checked", false);
-                int accent = intProp(node, "accent", node.getTheme().getColors().getAccent());
-                ShapeRenderer.rounded(g, x, y, 14f, 14f, 4f, 4f, 4f, 4f, checked ? accent : node.getTheme().getColors().getSurface());
-                if (checked) {
-                    drawCheck(g, x, y);
-                }
+                int accent = intProp(node, "accent", colors.getAccent());
+                ShapeRenderer.rounded(g, x, y, 14f, 14f, 4f, 4f, 4f, 4f, checked ? accent : colors.getSurface());
+                if (checked) drawCheck(g, x, y, colors.getOnAccent());
                 String label = str(node, "label", null);
-                if (label != null) g.drawString(font, label, (int) x + 18, (int) y + 3, 0xFFFFFFFF, false);
+                if (label != null) g.drawString(font, label, (int) x + 18, (int) y + 3, colors.getOnSurface(), false);
             }
             case "RadioButton" -> {
                 boolean selected = bool(node, "selected", false);
-                int accent = intProp(node, "accent", node.getTheme().getColors().getAccent());
-                ShapeRenderer.rounded(g, x, y, 14f, 14f, 7f, 7f, 7f, 7f, node.getTheme().getColors().getSurface());
+                int accent = intProp(node, "accent", colors.getAccent());
+                ShapeRenderer.rounded(g, x, y, 14f, 14f, 7f, 7f, 7f, 7f, colors.getSurface());
                 if (selected) ShapeRenderer.rounded(g, x + 4, y + 4, 6f, 6f, 3f, 3f, 3f, 3f, accent);
                 String label = str(node, "label", null);
-                if (label != null) g.drawString(font, label, (int) x + 18, (int) y + 3, 0xFFFFFFFF, false);
+                if (label != null) g.drawString(font, label, (int) x + 18, (int) y + 3, colors.getOnSurface(), false);
             }
             case "RadioGroup" -> {
-                            List<String> options = node.getOptions();
-                int sel = intProp(node, "selectedIndex", 0);
-                int accent = intProp(node, "accent", node.getTheme().getColors().getAccent());
-                if (options != null) {
-                    for (int i = 0; i < options.size(); i++) {
-                        float iy = y + i * 18;
-                        boolean s = i == sel;
-                        ShapeRenderer.rounded(g, x, iy, 14f, 14f, 7f, 7f, 7f, 7f, node.getTheme().getColors().getSurface());
-                        if (s) ShapeRenderer.rounded(g, x + 4, iy + 4, 6f, 6f, 3f, 3f, 3f, 3f, accent);
-                        g.drawString(font, options.get(i), (int) x + 18, (int) iy + 3, 0xFFFFFFFF, false);
-                    }
+                List<String> options = node.getOptions();
+                int sel = intProp(node, "selectedIndex", -1);
+                int accent = intProp(node, "accent", colors.getAccent());
+                for (int i = 0; i < options.size(); i++) {
+                    float iy = y + i * ControlMetrics.OPTION_ROW_HEIGHT;
+                    ShapeRenderer.rounded(g, x, iy, 14f, 14f, 7f, 7f, 7f, 7f, colors.getSurface());
+                    if (i == sel) ShapeRenderer.rounded(g, x + 4, iy + 4, 6f, 6f, 3f, 3f, 3f, 3f, accent);
+                    g.drawString(font, options.get(i), (int) x + 18, (int) iy + 3, colors.getOnSurface(), false);
                 }
             }
             case "Switch" -> {
                 boolean checked = bool(node, "checked", false);
                 float tw = Math.max(w, 34f);
                 float th = 18f;
-                int accent = intProp(node, "accent", node.getTheme().getColors().getAccent());
-                int trackColor = intProp(node, "trackColor", checked ? accent : 0xFF3A3A44);
+                int accent = intProp(node, "accent", colors.getAccent());
+                int trackColor = intProp(node, "trackColor", checked ? accent : colors.getInactive());
                 ShapeRenderer.rounded(g, x, y, tw, th, 9f, 9f, 9f, 9f, trackColor);
                 float position = Math.max(0f, Math.min(1f, floatProp(node, "position", checked ? 1f : 0f)));
                 float tx = x + 2f + (tw - 18f) * position;
-                ShapeRenderer.rounded(g, tx, y + 2, 14f, 14f, 7f, 7f, 7f, 7f, 0xFFFFFFFF);
+                ShapeRenderer.rounded(g, tx, y + 2, 14f, 14f, 7f, 7f, 7f, 7f, colors.getOnAccent());
             }
             case "Slider" -> {
                 float min = floatProp(node, "min", 0f);
                 float max = floatProp(node, "max", 1f);
                 float v = (floatProp(node, "value", min) - min) / Math.max(1e-6f, max - min);
                 v = Math.min(1f, Math.max(0f, v));
-                int accent = intProp(node, "accent", node.getTheme().getColors().getAccent());
+                int accent = intProp(node, "accent", colors.getAccent());
                 float th = 6f;
                 float cy = y + h / 2;
-                ShapeRenderer.rounded(g, x, cy - th / 2, w, th, 3f, 3f, 3f, 3f, 0xFF3A3A44);
+                ShapeRenderer.rounded(g, x, cy - th / 2, w, th, 3f, 3f, 3f, 3f, colors.getInactive());
                 ShapeRenderer.rounded(g, x, cy - th / 2, w * v, th, 3f, 3f, 3f, 3f, accent);
-                ShapeRenderer.rounded(g, x + w * v - 7, cy - 7, 14f, 14f, 7f, 7f, 7f, 7f, 0xFFFFFFFF);
+                ShapeRenderer.rounded(g, x + w * v - 7, cy - 7, 14f, 14f, 7f, 7f, 7f, 7f, colors.getOnAccent());
             }
             case "ProgressBar" -> {
                 float p = floatProp(node, "progress", 0f);
-                int accent = intProp(node, "accent", node.getTheme().getColors().getAccent());
-                ShapeRenderer.rounded(g, x, y, w, Math.max(h, 8f), 4f, 4f, 4f, 4f, node.getTheme().getColors().getSurface());
+                int accent = intProp(node, "accent", colors.getAccent());
+                ShapeRenderer.rounded(g, x, y, w, Math.max(h, 8f), 4f, 4f, 4f, 4f, colors.getSurface());
                 ShapeRenderer.rounded(g, x, y, w * p, Math.max(h, 8f), 4f, 4f, 4f, 4f, accent);
             }
             case "Image" -> {
@@ -398,12 +508,12 @@ public class UiRenderer {
                         ResourceLocation rl = ResourceLocation.parse(id);
                         g.blit(rl, (int) x, (int) y, 0, 0, (int) w, (int) h, (int) w, (int) h);
                     } catch (Exception ignored) {
-                        g.fill((int) x, (int) y, (int) (x + w), (int) (y + h), 0xFF5A2A2A);
+                        g.fill((int) x, (int) y, (int) (x + w), (int) (y + h), colors.getError());
                     }
                 }
             }
             case "ItemSlot" -> {
-                ShapeRenderer.rounded(g, x, y, Math.max(w, 20f), Math.max(h, 20f), 4f, 4f, 4f, 4f, node.getTheme().getColors().getSurface());
+                ShapeRenderer.rounded(g, x, y, Math.max(w, 20f), Math.max(h, 20f), 4f, 4f, 4f, 4f, colors.getSurface());
                 String itemId = str(node, "itemId", "minecraft:stone");
                 int count = intProp(node, "count", 1);
                 try {
@@ -416,6 +526,7 @@ public class UiRenderer {
                         int bottom = (int) (y + Math.max(h, 20f) - 2);
                         g.pose().pushPose();
                         g.pose().translate(0, 0, 200);
+                        // Item counts keep Minecraft's white, shadowed style.
                         g.drawString(font, label, right - font.width(label), bottom - font.lineHeight, 0xFFFFFFFF, true);
                         g.pose().popPose();
                     }
@@ -429,70 +540,51 @@ public class UiRenderer {
             case "Pagination" -> {
                 int page = intProp(node, "page", 0);
                 int count = Math.max(1, intProp(node, "pageCount", 1));
-                float actionWidth = Math.min(60f, w / 3f);
-                ShapeRenderer.rounded(g, x, y, actionWidth, h, 4f, 4f, 4f, 4f, 0xFF263444);
-                ShapeRenderer.rounded(g, x + w - actionWidth, y, actionWidth, h, 4f, 4f, 4f, 4f, 0xFF263444);
+                float actionWidth = ControlMetrics.paginationActionWidth(w);
+                ShapeRenderer.rounded(g, x, y, actionWidth, h, 4f, 4f, 4f, 4f, colors.getSurfaceVariant());
+                ShapeRenderer.rounded(g, x + w - actionWidth, y, actionWidth, h, 4f, 4f, 4f, 4f, colors.getSurfaceVariant());
                 int labelY = (int) (y + h / 2f - 4f);
                 int labelWidth = Math.max(0, (int) actionWidth - 8);
                 String previous = font.plainSubstrByWidth(str(node, "previousLabel", "< Prev"), labelWidth);
                 String next = font.plainSubstrByWidth(str(node, "nextLabel", "Next >"), labelWidth);
-                g.drawCenteredString(font, previous, (int) (x + actionWidth / 2f), labelY, page > 0 ? node.getTheme().getColors().getOnSurface() : 0xFF6F7D8D);
-                g.drawCenteredString(font, (page + 1) + " / " + count, (int) (x + w / 2), labelY, 0xFF98A8BB);
-                g.drawCenteredString(font, next, (int) (x + w - actionWidth / 2f), labelY, page < count - 1 ? node.getTheme().getColors().getOnSurface() : 0xFF6F7D8D);
+                g.drawCenteredString(font, previous, (int) (x + actionWidth / 2f), labelY, page > 0 ? colors.getOnSurface() : colors.getDisabledContent());
+                g.drawCenteredString(font, (page + 1) + " / " + count, (int) (x + w / 2), labelY, colors.getMuted());
+                g.drawCenteredString(font, next, (int) (x + w - actionWidth / 2f), labelY, page < count - 1 ? colors.getOnSurface() : colors.getDisabledContent());
             }
             case "Accordion" -> {
-                PixelIconRenderer.draw(g, bool(node, "expanded", false) ? opus.core.PixelIcon.CHEVRON_DOWN : opus.core.PixelIcon.CHEVRON_RIGHT,
-                    x + 5, y + 7, node.getTheme().getColors().getOnSurface());
-                g.drawString(font, str(node, "title", ""), (int) x + 16, (int) y + 2, node.getTheme().getColors().getOnSurface(), false);
+                PixelIconRenderer.draw(g, bool(node, "expanded", false) ? PixelIcon.CHEVRON_DOWN : PixelIcon.CHEVRON_RIGHT,
+                    x + 5, y + 7, colors.getOnSurface());
+                g.drawString(font, str(node, "title", ""), (int) x + 16, (int) y + 2, colors.getOnSurface(), false);
             }
             case "Dropdown" -> {
-                            List<String> options = node.getOptions();
-                int sel = intProp(node, "selectedIndex", 0);
+                // The header only; the open menu is painted in the overlay layer.
+                List<String> options = node.getOptions();
+                int sel = intProp(node, "selectedIndex", -1);
+                boolean enabled = bool(node, "enabled", true);
                 boolean expanded = bool(node, "expanded", false);
-                float progress = floatProp(node, "expansion", expanded ? 1f : 0f);
                 float header = DropdownMetrics.HEADER_HEIGHT;
-                ShapeRenderer.border(g, x, y, w, header, 6f, 1f,
-                    expanded ? 0xFF5B948F : 0xFF3B4858, node.getTheme().getColors().getSurface(), null);
-                String current = options != null && sel >= 0 && sel < options.size() ? options.get(sel) : "";
-                g.drawString(font, font.plainSubstrByWidth(current, Math.max(0, (int) w - 32)),
-                    (int) x + 9, (int) (y + (header - font.lineHeight) / 2), node.getTheme().getColors().getOnSurface(), false);
-                float arrowY = y + header / 2;
-                PixelIconRenderer.draw(g, expanded ? opus.core.PixelIcon.CHEVRON_UP : opus.core.PixelIcon.CHEVRON_DOWN,
-                    x + w - 14, arrowY, 0xFFB5C3D1);
-                if (progress > 0 && options != null) {
-                    float menuY = y + header + DropdownMetrics.MENU_GAP;
-                    float menuH = DropdownMetrics.menuHeight(options.size());
-                    float visibleH = Math.min(menuH, Math.max(0, h - header - DropdownMetrics.MENU_GAP));
-                    if (visibleH <= 0) break;
-                    g.enableScissor((int) x, (int) Math.floor(menuY - scrollY), (int) Math.ceil(x + w), (int) Math.ceil(menuY + visibleH - scrollY));
-                    try {
-                        ShapeRenderer.border(g, x, menuY, w, menuH, 6f, 1f, 0xFF3B4858, node.getTheme().getColors().getSurface(), null);
-                        for (int i = 0; i < options.size(); i++) {
-                            float iy = menuY + DropdownMetrics.MENU_PADDING + i * DropdownMetrics.ROW_HEIGHT;
-                            boolean hovered = expanded && progress >= 1 && visuals.bounds(node).getInputEnabled()
-                                && hoverContentX >= x + 4 && hoverContentX < x + w - 4
-                                && DropdownMetrics.optionAt((float) (hoverContentY - y), options.size()) == i;
-                            if (hovered || i == sel) ShapeRenderer.rounded(g, x + 4, iy, w - 8, DropdownMetrics.ROW_HEIGHT - 1,
-                                4, 4, 4, 4, hovered ? 0xFF354C5B : 0xFF254B49);
-                            String label = font.plainSubstrByWidth(options.get(i), Math.max(0, (int) w - 36));
-                            g.drawString(font, label, (int) x + 10, (int) (iy + (DropdownMetrics.ROW_HEIGHT - font.lineHeight) / 2),
-                                i == sel ? 0xFF9BE7D7 : 0xFFD3DEE9, false);
-                            if (i == sel) drawCheck(g, x + w - 24, iy + 3);
-                        }
-                    } finally { g.disableScissor(); }
-                }
+                boolean hovered = enabled && visuals.bounds(node).getInputEnabled() && isHovered(x, y, w, header);
+                int borderColor = !enabled ? colors.getInactive() : expanded ? intProp(node, "accent", colors.getAccent())
+                    : hovered ? colors.getMuted() : colors.getOutline();
+                ShapeRenderer.border(g, x, y, w, header, 6f, 1f, borderColor, colors.getSurface(), null);
+                boolean hasValue = sel >= 0 && sel < options.size();
+                String label = hasValue ? options.get(sel) : str(node, "placeholder", "");
+                int textColor = !enabled ? colors.getDisabledContent() : hasValue ? colors.getOnSurface() : colors.getMuted();
+                g.drawString(font, font.plainSubstrByWidth(label, Math.max(0, (int) w - 32)),
+                    (int) x + 9, (int) (y + (header - font.lineHeight) / 2), textColor, false);
+                PixelIconRenderer.draw(g, expanded ? PixelIcon.CHEVRON_UP : PixelIcon.CHEVRON_DOWN,
+                    x + w - 14, y + header / 2, enabled ? colors.getMuted() : colors.getDisabledContent());
             }
             case "MultiSelect" -> {
-                            List<String> options = node.getOptions();
-                            java.util.Set<Integer> selected = node.getSelectedOptions();
-                if (options != null) {
-                    for (int i = 0; i < options.size(); i++) {
-                        float iy = y + i * 18;
-                        boolean s = selected != null && selected.contains(i);
-                        ShapeRenderer.rounded(g, x, iy, 14f, 14f, 4f, 4f, 4f, 4f, s ? intProp(node, "accent", node.getTheme().getColors().getAccent()) : node.getTheme().getColors().getSurface());
-                        if (s) drawCheck(g, x, iy);
-                        g.drawString(font, options.get(i), (int) x + 18, (int) iy + 3, 0xFFFFFFFF, false);
-                    }
+                List<String> options = node.getOptions();
+                Set<Integer> selected = node.getSelectedOptions();
+                int accent = intProp(node, "accent", colors.getAccent());
+                for (int i = 0; i < options.size(); i++) {
+                    float iy = y + i * ControlMetrics.OPTION_ROW_HEIGHT;
+                    boolean s = selected.contains(i);
+                    ShapeRenderer.rounded(g, x, iy, 14f, 14f, 4f, 4f, 4f, 4f, s ? accent : colors.getSurface());
+                    if (s) drawCheck(g, x, iy, colors.getOnAccent());
+                    g.drawString(font, options.get(i), (int) x + 18, (int) iy + 3, colors.getOnSurface(), false);
                 }
             }
             default -> {
@@ -500,8 +592,8 @@ public class UiRenderer {
         }
     }
 
-    private static void drawCheck(GuiGraphics g, float x, float y) {
-        PixelIconRenderer.draw(g, opus.core.PixelIcon.CHECK, x + 7, y + 7, 0xFFFFFFFF);
+    private static void drawCheck(GuiGraphics g, float x, float y, int color) {
+        PixelIconRenderer.draw(g, PixelIcon.CHECK, x + 7, y + 7, color);
     }
 
     // ---- Input ----
@@ -511,8 +603,14 @@ public class UiRenderer {
         ensureLayout(composition);
         double contentY = mouseY + scrollY;
         if (visuals == null) return false;
+        Overlay overlay = overlayAt(mouseX, contentY);
+        if (overlay != null) {
+            clickOverlay(overlay, mouseX, contentY);
+            return true;
+        }
         List<UiNode> hitPath = visuals.hitPath((float) mouseX, (float) contentY);
-        if (dismissDropdowns(composition, hitPath)) return true;
+        // Outside clicks only close menus and popups, so they never also activate what lies beneath.
+        if (dismissOutside(composition, hitPath, true)) return true;
         // Walk from the painted leaf toward its parents. Searching the whole
         // tree again could activate a clickable behind the topmost control.
         for (UiNode node : hitPath) {
@@ -532,9 +630,25 @@ public class UiRenderer {
         return false;
     }
 
+    private void clickOverlay(Overlay overlay, double x, double y) {
+        UiNode node = overlay.owner();
+        if (!visuals.bounds(node).getInputEnabled()) return;
+        if (node.getType().equals("DateField")) {
+            setFocus(node, false);
+            inputs.clickPicker(node, overlay.x(), overlay.y(), overlay.width(), x, y);
+            return;
+        }
+        // Clicks during the opening/closing animation are consumed without choosing a row.
+        if (floatProp(node, "expansion", 1f) < 1f) return;
+        int index = DropdownMetrics.optionAt((float) (y - overlay.y()), node.getOptions().size());
+        if (index < 0) return;
+        call(node.getEvents().getSelect(), index);
+        call(node.getEvents().getExpandedChange(), false);
+    }
+
     private void setFocus(UiNode node, boolean fromKeyboard) {
         String next = node == null ? null : node.getIdentity();
-        if (!java.util.Objects.equals(next, focusedId) && node != null) keyboard.focus(node);
+        if (!Objects.equals(next, focusedId) && node != null) keyboard.focus(node);
         focusedId = next;
         keyboardFocus = fromKeyboard;
         inputs.focus(node != null && InputFields.isInput(node) ? next : null);
@@ -542,20 +656,20 @@ public class UiRenderer {
 
     public boolean handleKey(Composition composition, int key, int scan, int modifiers) {
         ensureLayout(composition);
-        if (key == org.lwjgl.glfw.GLFW.GLFW_KEY_TAB) {
+        if (key == GLFW.GLFW_KEY_TAB) {
             inputs.dismissPicker();
-            dismissDropdowns(composition);
+            dismissOutside(composition, List.of(), false);
             ensureLayout(composition);
-            setFocus(opus.core.FocusNavigation.next(focusTargets, focusedId, net.minecraft.client.gui.screens.Screen.hasShiftDown()), true);
+            setFocus(FocusNavigation.next(focusTargets, focusedId, Screen.hasShiftDown()), true);
             return focusedId != null;
         }
-        if (key == org.lwjgl.glfw.GLFW.GLFW_KEY_ESCAPE && inputs.dismissPicker()) return true;
-        if (key == org.lwjgl.glfw.GLFW.GLFW_KEY_ESCAPE && focusedId != null) { setFocus(null, false); return true; }
+        if (key == GLFW.GLFW_KEY_ESCAPE && inputs.dismissPicker()) return true;
+        if (key == GLFW.GLFW_KEY_ESCAPE && focusedId != null) { setFocus(null, false); return true; }
         if (inputs.hasFocus()) return inputs.key(key, scan, modifiers);
         UiNode node = focusedId == null || visuals == null ? null : visuals.find(focusedId);
         if (node == null) return false;
         keyboardFocus = true;
-        return keyboard.key(node, key, net.minecraft.client.gui.screens.Screen.hasShiftDown());
+        return keyboard.key(node, key, Screen.hasShiftDown());
     }
 
     public boolean handleCharacter(Composition composition, char character, int modifiers) {
@@ -563,12 +677,15 @@ public class UiRenderer {
         return inputs.character(character, modifiers);
     }
 
-    /** Keep a keyboard-focused control visible without jumping on ordinary mouse clicks. */
+    /** Keep a keyboard-focused control, and its open menu, visible without jumping on ordinary mouse clicks. */
     public float revealFocus(Composition composition, float scroll, float viewportHeight) {
         ensureLayout(composition);
         UiNode node = focusedId == null || visuals == null ? null : visuals.find(focusedId);
         if (node == null) return scroll;
         float top = visuals.bounds(node).getY(), bottom = top + node.getHeight();
+        for (Overlay overlay : overlays) {
+            if (overlay.owner() == node) bottom = Math.max(bottom, overlay.y() + overlay.height());
+        }
         if (bottom > scroll + viewportHeight - 8) scroll = bottom - viewportHeight + 8;
         if (top < scroll + 8) scroll = top - 8;
         return Math.max(0, Math.min(Math.max(0, contentHeight(composition) - viewportHeight), scroll));
@@ -576,48 +693,58 @@ public class UiRenderer {
 
     public boolean handleInputScroll(Composition composition, double x, double y, float scroll, double dx, double dy) {
         ensureLayout(composition);
+        // Wheel input over a floating menu must not scroll a text area hidden underneath it.
+        if (overlayAt(x, y + scroll) != null) return false;
         return inputs.scroll(x, y + scroll, dx, dy);
     }
 
-    /** Escape closes open menus before the host closes the screen. */
-    public boolean dismissDropdowns(Composition composition) {
+    /** Escape closes open menus and calendars first, then popups, before the host closes the screen. */
+    public boolean dismissOverlays(Composition composition) {
         ensureLayout(composition);
-        return dismissDropdowns(composition, List.of());
+        return dismissOutside(composition, List.of(), false) || dismissOutside(composition, List.of(), true);
     }
 
-    private boolean dismissDropdowns(Composition composition, List<UiNode> keepOpen) {
+    /**
+     * Closes open dropdowns and calendars that are not on [keepOpen], and with [popups] also dismisses
+     * popups outside it. Returns whether anything was asked to close.
+     */
+    private boolean dismissOutside(Composition composition, List<UiNode> keepOpen, boolean popups) {
         if (visuals == null) return false;
         // Collect first: callbacks may synchronously replace the composition tree.
-        List<java.util.function.Consumer<Boolean>> callbacks = new java.util.ArrayList<>();
-        for (UiNode node : composition.getRoot().findAll("Dropdown")) {
-            VisualBounds bounds = visuals.bounds(node);
-            if (bounds != null && bounds.getInputEnabled() && bool(node, "expanded", false)
-                && !keepOpen.contains(node)) {
-                java.util.function.Consumer<Boolean> callback = node.getEvents().getExpandedChange();
-                if (callback != null) callbacks.add(callback);
-            }
-        }
-        callbacks.forEach(callback -> callback.accept(false));
+        List<Runnable> callbacks = new ArrayList<>();
+        collectDismissals(composition.getRoot(), keepOpen, popups, callbacks);
+        callbacks.forEach(Runnable::run);
         return !callbacks.isEmpty();
     }
 
-    private record VisualPosition(float x, float y) {}
-
-    private VisualPosition visualPosition(UiNode node) {
-        VisualBounds bounds = visuals == null ? null : visuals.bounds(node);
-        return bounds == null ? new VisualPosition(node.getX(), node.getY()) : new VisualPosition(bounds.getX(), bounds.getY());
+    private void collectDismissals(UiNode node, List<UiNode> keepOpen, boolean popups, List<Runnable> out) {
+        VisualBounds bounds = visuals.bounds(node);
+        if (bounds == null || !bounds.getInputEnabled()) return;
+        boolean outside = !keepOpen.contains(node);
+        switch (node.getType()) {
+            case "Dropdown", "DateField" -> {
+                Consumer<Boolean> close = node.getEvents().getExpandedChange();
+                if (outside && close != null && bool(node, "expanded", false)) out.add(() -> close.accept(false));
+            }
+            case "Popup" -> {
+                Runnable dismiss = node.getEvents().getDismiss();
+                if (popups && outside && dismiss != null) out.add(dismiss);
+            }
+            default -> { }
+        }
+        for (UiNode child : node.getChildren()) collectDismissals(child, keepOpen, popups, out);
     }
 
     /** Structural controls interpret clicks over their own area. */
     private boolean fireControl(UiNode node, double mouseX, double mouseY) {
-        VisualPosition position = visualPosition(node);
-        float x = position.x();
-        float y = position.y();
+        VisualBounds bounds = visuals.bounds(node);
+        float x = bounds.getX();
+        float y = bounds.getY();
         switch (node.getType()) {
             case "Checkbox", "Switch" -> {
-                java.util.function.Consumer<Boolean> cb = node.getEvents().getCheckedChange();
+                Consumer<Boolean> cb = node.getEvents().getCheckedChange();
                 if (cb != null) {
-                    cb.accept(!bool(node, "checked", bool(node, "value", false)));
+                    cb.accept(!bool(node, "checked", false));
                     return true;
                 }
             }
@@ -634,43 +761,25 @@ public class UiRenderer {
                 return true;
             }
             case "Accordion" -> {
-                java.util.function.Consumer<Boolean> cb = node.getEvents().getExpandedChange();
-                if (cb != null && mouseY < y + 18) {
+                Consumer<Boolean> cb = node.getEvents().getExpandedChange();
+                if (cb != null && mouseY < y + ControlMetrics.ACCORDION_HEADER_HEIGHT) {
                     cb.accept(!bool(node, "expanded", false));
                     return true;
                 }
             }
             case "Dropdown" -> {
-                List<String> options = node.getOptions();
-                java.util.function.Consumer<Integer> onSelect = node.getEvents().getSelect();
-                java.util.function.Consumer<Boolean> onExpanded = node.getEvents().getExpandedChange();
-                if (options == null) return false;
-                if (bool(node, "expanded", false)) {
-                    if (mouseY < y + DropdownMetrics.HEADER_HEIGHT) {
-                        if (onExpanded != null) onExpanded.accept(false);
-                        return onExpanded != null;
-                    }
-                    if (floatProp(node, "expansion", 1f) < 1f) return true;
-                    int idx = DropdownMetrics.optionAt((float) (mouseY - y), options.size());
-                    if (idx >= 0 && idx < options.size() && onSelect != null) {
-                        onSelect.accept(idx);
-                        if (onExpanded != null) onExpanded.accept(false);
-                        return true;
-                    }
-                    return true;
-                } else if (onExpanded != null && mouseY < y + DropdownMetrics.HEADER_HEIGHT) {
-                    onExpanded.accept(true);
-                    return true;
-                }
-                // Consume clicks on the remaining exit animation, without selecting a row.
+                // The header toggles the menu; choices are made in the overlay.
+                boolean open = !bool(node, "expanded", false);
+                if (open) keyboard.focus(node);
+                call(node.getEvents().getExpandedChange(), open);
                 return true;
             }
             case "RadioGroup" -> {
                 List<String> options = node.getOptions();
-                java.util.function.Consumer<Integer> onSelect = node.getEvents().getSelect();
-                if (options != null && onSelect != null) {
-                    int idx = (int) Math.floor((mouseY - y) / 18);
-                    if (idx >= 0 && idx < options.size()) {
+                Consumer<Integer> onSelect = node.getEvents().getSelect();
+                if (onSelect != null) {
+                    int idx = ControlMetrics.optionAt((float) (mouseY - y), options.size());
+                    if (idx >= 0) {
                         onSelect.accept(idx);
                         return true;
                     }
@@ -678,13 +787,12 @@ public class UiRenderer {
             }
             case "MultiSelect" -> {
                 List<String> options = node.getOptions();
-                java.util.Set<Integer> selected = node.getSelectedOptions();
-                java.util.function.Consumer<java.util.Set<Integer>> onChange =
-                    node.getEvents().getSelectionChange();
-                if (options != null && onChange != null) {
-                    int idx = (int) Math.floor((mouseY - y) / 18);
-                    if (idx >= 0 && idx < options.size()) {
-                        java.util.Set<Integer> next = new java.util.HashSet<>(selected != null ? selected : java.util.Set.of());
+                Set<Integer> selected = node.getSelectedOptions();
+                Consumer<Set<Integer>> onChange = node.getEvents().getSelectionChange();
+                if (onChange != null) {
+                    int idx = ControlMetrics.optionAt((float) (mouseY - y), options.size());
+                    if (idx >= 0) {
+                        Set<Integer> next = new HashSet<>(selected);
                         if (!next.remove(idx)) next.add(idx);
                         onChange.accept(next);
                         return true;
@@ -692,11 +800,11 @@ public class UiRenderer {
                 }
             }
             case "Pagination" -> {
-                java.util.function.Consumer<Integer> cb = node.getEvents().getPageChange();
+                Consumer<Integer> cb = node.getEvents().getPageChange();
                 int page = intProp(node, "page", 0);
                 int count = intProp(node, "pageCount", 1);
                 if (cb != null) {
-                    double actionWidth = Math.min(60.0, node.getWidth() / 3.0);
+                    float actionWidth = ControlMetrics.paginationActionWidth(node.getWidth());
                     double lx = mouseX - x;
                     if (lx <= actionWidth && page > 0) cb.accept(page - 1);
                     else if (lx >= node.getWidth() - actionWidth && page < count - 1) cb.accept(page + 1);
@@ -730,20 +838,18 @@ public class UiRenderer {
 
     public boolean isDraggingControl() { return draggingSlider != null || inputs.isDragging(); }
 
-    /** Keep swipe navigation from moving away from an open menu or popup. */
+    /** Keep swipe navigation from moving away from an open menu, calendar or popup. */
     public boolean blocksSwipeNavigation(Composition composition) {
         ensureLayout(composition);
-        if (inputs.hasFocus()) return true;
-        return blocksSwipeNavigation(composition.getRoot());
+        if (inputs.hasFocus() || !overlays.isEmpty()) return true;
+        return containsPopup(composition.getRoot());
     }
 
-    private boolean blocksSwipeNavigation(UiNode node) {
+    private boolean containsPopup(UiNode node) {
         VisualBounds bounds = visuals == null ? null : visuals.bounds(node);
         if (bounds == null || bounds.getOpacity() <= 0) return false;
         if (node.getType().equals("Popup")) return true;
-        if (node.getType().equals("Dropdown") && (bool(node, "expanded", false)
-            || floatProp(node, "expansion", 0f) > 0f)) return true;
-        for (UiNode child : node.getChildren()) if (blocksSwipeNavigation(child)) return true;
+        for (UiNode child : node.getChildren()) if (containsPopup(child)) return true;
         return false;
     }
 
@@ -754,11 +860,11 @@ public class UiRenderer {
     }
 
     private void dragSliderTo(UiNode slider, double mouseX) {
-        java.util.function.Consumer<Float> cb = slider.getEvents().getFloatChange();
+        Consumer<Float> cb = slider.getEvents().getFloatChange();
         if (cb == null) return;
         float min = floatProp(slider, "min", 0f);
         float max = floatProp(slider, "max", 1f);
-        float frac = (float) ((mouseX - visualPosition(slider).x()) / Math.max(1, slider.getWidth()));
+        float frac = (float) ((mouseX - visuals.bounds(slider).getX()) / Math.max(1, slider.getWidth()));
         frac = Math.min(1f, Math.max(0f, frac));
         cb.accept(min + frac * (max - min));
     }
@@ -771,6 +877,14 @@ public class UiRenderer {
             case HOLE_CENTER -> new ShapeRenderer.Rect(x + w / 2 - s / 4, y + h / 2 - s / 4, x + w / 2 + s / 4, y + h / 2 + s / 4);
             case TAB_END -> new ShapeRenderer.Rect(x + w - s / 2, y + h / 2 - s / 4, x + w + 1, y + h / 2 + s / 4);
         };
+    }
+
+    private static Colors colors(UiNode node) {
+        return node.getTheme().getColors();
+    }
+
+    private static <T> void call(Consumer<T> callback, T value) {
+        if (callback != null) callback.accept(value);
     }
 
     private static String str(UiNode node, String key, String fallback) {

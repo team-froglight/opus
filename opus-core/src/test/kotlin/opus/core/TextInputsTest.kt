@@ -90,8 +90,7 @@ class TextInputsTest {
         val month = java.time.LocalDate.of(2026, 9, 1)
         assertEquals(java.time.LocalDate.of(2026, 8, 31), DateInput.calendarStart(month))
         setContent { DateField("", {}, "Date") }.use { c ->
-            @Suppress("UNCHECKED_CAST")
-            (c.root.children.single().props["onExpandedChange"] as (Boolean) -> Unit)(true)
+            c.root.children.single().events.expandedChange!!.accept(true)
             assertEquals(true, c.root.children.single().props["expanded"])
         }
     }
@@ -99,8 +98,7 @@ class TextInputsTest {
         val value = mutableStateOf("")
         setContent { TextField(value.value, { value.value = it }, "Name") }.use { c ->
             val original = c.root.children.single()
-            @Suppress("UNCHECKED_CAST")
-            (original.props["onValueChange"] as (String) -> Unit)("Привіт")
+            original.events.textChange!!.accept("Привіт")
             assertEquals("Привіт", c.root.children.single().props["value"])
             assertEquals(original.identity, c.root.children.single().identity)
         }
@@ -124,8 +122,7 @@ class TextInputsTest {
         }).use { c ->
             assertEquals(listOf("TextField", "TextArea", "NumberField"), c.root.children.map { it.type })
             assertEquals(options, c.root.children[0].props["inputOptions"])
-            @Suppress("UNCHECKED_CAST")
-            (c.root.children[0].props["onSubmit"] as () -> Unit)()
+            c.root.children[0].events.submit!!.run()
             assertTrue(submitted)
         }
         assertEquals("", InputOptions.DEFAULT.placeholder)

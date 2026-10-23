@@ -98,31 +98,27 @@ class YogaLayoutTest {
         }
     }
     @Test
-    fun dropdownReservesAnimatedMenuAndBottomPadding() {
-        val expanded = opus.core.mutableStateOf(false)
+    fun openDropdownFloatsWithoutMovingFollowingContent() {
         val c = setContent {
             Column {
-                opus.core.Dropdown(listOf("Apple", "Pear"), 0, {}, expanded.value, {}, Modifier.fillMaxWidth())
+                opus.core.Dropdown(listOf("Apple", "Pear"), 0, {}, Modifier.fillMaxWidth())
                 Text("Following content")
             }
         }
         YogaTree(fakeMeasurer).use { tree ->
-            fun checkLayout(expectedHeight: Float) {
+            fun checkLayout() {
                 tree.layout(c.root, c, 200f, 200f)
                 val children = c.root.children.single().children
-                assertEquals(expectedHeight, children[0].height, 0.01f)
-                assertEquals(expectedHeight, children[1].y, 0.01f)
+                assertEquals(26f, children[0].height, 0.01f)
+                assertEquals(26f, children[1].y, 0.01f)
             }
             c.advanceAnimations(0)
-            checkLayout(26f)
-            expanded.value = true
+            checkLayout()
+            c.root.findAll("Dropdown").single().events.expandedChange!!.accept(true)
             c.advanceAnimations(90_000_000)
-            checkLayout(75f)
+            checkLayout()
             c.advanceAnimations(180_000_000)
-            checkLayout(82f)
-            expanded.value = false
-            c.advanceAnimations(360_000_000)
-            checkLayout(26f)
+            checkLayout()
         }
         c.close()
     }

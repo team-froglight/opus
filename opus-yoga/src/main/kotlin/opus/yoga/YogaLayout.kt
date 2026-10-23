@@ -1,13 +1,19 @@
 package opus.yoga
 
 import opus.core.Composition
-import opus.core.UiNode
-import opus.core.TextRole
-import opus.core.elements
+import opus.core.ControlMetrics
+import opus.core.DropdownMetrics
 import opus.core.FillMax
 import opus.core.FixedSize
+import opus.core.InputMetrics
+import opus.core.InputOptions
 import opus.core.Padding
+import opus.core.TextRole
+import opus.core.UiNode
 import opus.core.Weight
+import opus.core.elements
+import opus.core.isTextInput
+import org.lwjgl.util.yoga.YGMeasureFunc
 import org.lwjgl.util.yoga.YGMeasureFuncI
 import org.lwjgl.util.yoga.Yoga
 
@@ -33,12 +39,12 @@ interface TextMeasurer {
  * - Rebuilds native nodes only when the composition changed (compositionVersion).
  * - Recalculates layout only when size changed or the tree is dirty.
  * - Writes x/y/width/height back to [UiNode]s every frame (cheap traversal).
- * - Measure callbacks are strongly referenced for the tree lifetime (native safety).
+ * - Measure callbacks are native closures owned by the tree and freed with its nodes.
  */
 class YogaTree(private val measurer: TextMeasurer) : AutoCloseable {
     private var rootHandle: Long = 0L
     private val handles = java.util.IdentityHashMap<UiNode, Long>()
-    private val measureFuncs = mutableListOf<YGMeasureFuncI>()
+    private val measureFuncs = mutableListOf<YGMeasureFunc>()
     private var lastCompositionVersion = -1
     private var lastRoot: UiNode? = null
     private var lastBuildWidth = Float.NaN
@@ -62,13 +68,29 @@ class YogaTree(private val measurer: TextMeasurer) : AutoCloseable {
     }
 
     private fun rebuild(root: UiNode, width: Float) {
+        freeNative()
+        rootHandle = build(root, null, null, width)
+    }
+
+    /** Frees the node tree first: it must never call a measure closure after that closure is freed. */
+    private fun freeNative() {
         if (rootHandle != 0L) {
             Yoga.YGNodeFreeRecursive(rootHandle)
             rootHandle = 0L
         }
         handles.clear()
+        measureFuncs.forEach { it.free() }
         measureFuncs.clear()
-        rootHandle = build(root, null, null, width)
+    }
+
+    /**
+     * A lambda passed straight to YGNodeSetMeasureFunc allocates a native closure that is never
+     * released. Wrap it explicitly so every rebuild can free the previous tree's closures.
+     */
+    private fun setMeasureFunc(handle: Long, measure: YGMeasureFuncI) {
+        val callback = YGMeasureFunc.create(measure)
+        measureFuncs += callback
+        Yoga.YGNodeSetMeasureFunc(handle, callback)
     }
 
     private fun build(node: UiNode, parentType: String?, gridCellWidth: Float?, availableWidth: Float): Long {
@@ -148,24 +170,21 @@ class YogaTree(private val measurer: TextMeasurer) : AutoCloseable {
             Yoga.YGNodeStyleSetWidth(h, resolvedWidth)
         }
 
-        if (node.type in setOf("TextField", "TextArea", "NumberField", "DateField")) {
-            val options = node.props["inputOptions"] as opus.core.InputOptions
+        if (isTextInput(node)) {
+            val options = node.props["inputOptions"] as InputOptions
             val rows = node.props["rows"] as Int
             val support = options.error ?: options.helperText
-            val cb = YGMeasureFuncI { _, width, widthMode, _, _, out ->
+            setMeasureFunc(h) { _, width, widthMode, _, _, out ->
                 val available = if (widthMode == Yoga.YGMeasureModeUndefined) 180f else width.coerceAtLeast(1f)
                 out.width(available)
-                val extra = if (node.type == "DateField" && node.props["expanded"] == true)
-                    opus.core.DateInput.CALENDAR_HEIGHT + opus.core.DateInput.CALENDAR_GAP else 0f
-                out.height(opus.core.InputMetrics.LABEL_HEIGHT + opus.core.InputMetrics.fieldHeight(rows) + extra +
+                // An open DateField calendar floats like a dropdown menu and takes no space.
+                out.height(InputMetrics.LABEL_HEIGHT + InputMetrics.fieldHeight(rows) +
                     if (support.isNotEmpty()) 5f + measurer.wrappedHeight(support, available) else 0f)
             }
-            measureFuncs += cb
-            Yoga.YGNodeSetMeasureFunc(h, cb)
-        } else if (node.children.isEmpty() && isLeafMeasurable(node)) {
+        } else if (node.children.isEmpty() && node.type in leafMeasuredTypes) {
             val label = leafText(node)
             val role = (node.props["role"] as? TextRole) ?: TextRole.PARAGRAPH
-            val cb = YGMeasureFuncI { _, width, widthMode, _, _, out ->
+            setMeasureFunc(h) { _, width, widthMode, _, _, out ->
                 val maxW = if (widthMode == Yoga.YGMeasureModeUndefined) Float.MAX_VALUE else width
                 val fid = node.props["fontId"] as? String
                 val size = (node.props["textSize"] as? Number)?.toFloat() ?: node.theme.typography.sizeFor(role)
@@ -174,8 +193,6 @@ class YogaTree(private val measurer: TextMeasurer) : AutoCloseable {
                 out.width(w)
                 out.height(hh)
             }
-            measureFuncs += cb
-            Yoga.YGNodeSetMeasureFunc(h, cb)
         } else if (node.type == "Accordion" && node.props["expanded"] != true) {
             // Collapsed: children take no space (rebuilt on toggle via recompose).
         } else {
@@ -192,33 +209,21 @@ class YogaTree(private val measurer: TextMeasurer) : AutoCloseable {
         return h
     }
 
-    private fun writeBack(node: UiNode, accX: Float, accY: Float) {
+    /** Yoga positions are parent-relative; [UiNode] coordinates are absolute, with the root at the origin. */
+    private fun writeBack(node: UiNode, parentX: Float, parentY: Float) {
         val h = handles[node] ?: return
-        // Root coordinates are absolute; children are relative to parents.
-        val parentIsRoot = node.type == "Root"
-        val x = if (parentIsRoot) 0f else accX + Yoga.YGNodeLayoutGetLeft(h)
-        val y = if (parentIsRoot) 0f else accY + Yoga.YGNodeLayoutGetTop(h)
-        if (node.type == "Root") {
-            node.x = 0f; node.y = 0f
-            node.width = Yoga.YGNodeLayoutGetWidth(h)
-            node.height = Yoga.YGNodeLayoutGetHeight(h)
-        } else {
-            node.x = x; node.y = y
-            node.width = Yoga.YGNodeLayoutGetWidth(h)
-            node.height = Yoga.YGNodeLayoutGetHeight(h)
-        }
+        val isRoot = node.type == "Root"
+        node.x = if (isRoot) 0f else parentX + Yoga.YGNodeLayoutGetLeft(h)
+        node.y = if (isRoot) 0f else parentY + Yoga.YGNodeLayoutGetTop(h)
+        node.width = Yoga.YGNodeLayoutGetWidth(h)
+        node.height = Yoga.YGNodeLayoutGetHeight(h)
         node.children.forEach { writeBack(it, node.x, node.y) }
     }
 
-    private fun isLeafMeasurable(node: UiNode): Boolean = when (node.type) {
-        "Text", "Button", "Checkbox", "RadioButton", "Label" -> true
-        else -> false
-    }
-
     private fun widgetMinSize(node: UiNode): Pair<Float, Float> {
-        if (node.type in setOf("TextField", "TextArea", "NumberField", "DateField")) {
-            val options = node.props["inputOptions"] as? opus.core.InputOptions ?: opus.core.InputOptions()
-            return 40f to opus.core.InputMetrics.height(node.props["rows"] as? Int ?: 1, options)
+        if (isTextInput(node)) {
+            val options = node.props["inputOptions"] as? InputOptions ?: InputOptions()
+            return 40f to InputMetrics.height(node.props["rows"] as? Int ?: 1, options)
         }
         fun optCount(): Int = (node.props["options"] as? List<*>)?.size ?: 0
         return when (node.type) {
@@ -228,12 +233,9 @@ class YogaTree(private val measurer: TextMeasurer) : AutoCloseable {
             "ProgressBar" -> 0f to 8f
             "ItemSlot" -> 20f to 20f
             "Pagination" -> 0f to 24f
-            "Dropdown" -> {
-                val expanded = node.props["expanded"] as? Boolean ?: false
-                val progress = (node.props["expansion"] as? Number)?.toFloat() ?: if (expanded) 1f else 0f
-                0f to opus.core.DropdownMetrics.height(optCount(), progress)
-            }
-            "RadioGroup", "MultiSelect" -> 0f to 18f * optCount()
+            // The open menu floats above following content; only the header takes space.
+            "Dropdown" -> 0f to DropdownMetrics.HEADER_HEIGHT
+            "RadioGroup", "MultiSelect" -> 0f to ControlMetrics.OPTION_ROW_HEIGHT * optCount()
             else -> 0f to 0f
         }
     }
@@ -244,19 +246,18 @@ class YogaTree(private val measurer: TextMeasurer) : AutoCloseable {
     }
 
     private fun leafText(node: UiNode): String = when (node.type) {
-        "Text" -> node.props["text"] as? String ?: ""
-        "Button" -> node.props["text"] as? String ?: ""
+        "Text", "Button" -> node.props["text"] as? String ?: ""
         "Checkbox", "RadioButton" -> node.props["label"] as? String ?: "□"
         else -> ""
     }
 
     override fun close() {
-        if (rootHandle != 0L) {
-            Yoga.YGNodeFreeRecursive(rootHandle)
-            rootHandle = 0L
-        }
-        handles.clear()
-        measureFuncs.clear()
+        freeNative()
         lastRoot = null
+    }
+
+    private companion object {
+        /** Childless nodes whose size comes from their text. */
+        val leafMeasuredTypes = setOf("Text", "Button", "Checkbox", "RadioButton")
     }
 }

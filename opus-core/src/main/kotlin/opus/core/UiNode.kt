@@ -9,8 +9,8 @@ class UiNode(val type: String) {
         internal set
     val children = mutableListOf<UiNode>()
     val props = mutableMapOf<String, Any?>()
-    /** Typed built-in callbacks; raw custom/legacy nodes are adapted at this single boundary. */
-    val events: ControlEvents get() = props["events"] as? ControlEvents ?: ControlEvents.legacy(this)
+    /** Typed callbacks from the `events` prop; nodes without one have none. */
+    val events: ControlEvents get() = props["events"] as? ControlEvents ?: ControlEvents.NONE
     val options: List<String> get() {
         val value = props["options"] ?: return emptyList()
         require(value is List<*> && value.all { it is String }) { "$type.options must be a list of strings" }
@@ -34,10 +34,6 @@ class UiNode(val type: String) {
 
     fun isOutsideViewport(viewX: Float, viewY: Float, viewW: Float, viewH: Float): Boolean =
         x + width < viewX || y + height < viewY || x > viewX + viewW || y > viewY + viewH
-
-    @Deprecated("Use isOutsideViewport", ReplaceWith("isOutsideViewport(viewX, viewY, viewW, viewH)"))
-    fun isOffview(viewX: Float, viewY: Float, viewW: Float, viewH: Float): Boolean =
-        isOutsideViewport(viewX, viewY, viewW, viewH)
 
     /** Depth-first walk that skips subtrees outside the viewport. */
     fun visitVisible(viewX: Float, viewY: Float, viewW: Float, viewH: Float, action: (UiNode) -> Unit) {

@@ -72,8 +72,6 @@ dependencies {
     // kotlin-stdlib ships inside the mod jar too (no KFF dependency in v1).
     jarJar(libs.kotlin.stdlib)
     jarJar(libs.lwjgl.yoga)
-    // External libs for dev runs (MDG "External Dependencies: Runs", MC 1.21.1).
-
     // Transitives the library modules need at runtime (kotlin-stdlib via
     // opus-core's api dep, lwjgl-yoga via opus-yoga's api dep).
     add("additionalRuntimeClasspath", libs.kotlin.stdlib)
@@ -86,7 +84,18 @@ dependencies {
 // Library assets must also be visible as resources of the consuming mod.
 tasks.processResources {
     from(ss(":opus-minecraft").resources)
-    val modVersion = project.version.toString()
-    inputs.property("showcaseVersion", modVersion)
-    filesMatching("META-INF/neoforge.mods.toml") { expand("mod_version" to modVersion) }
+    // gradle.properties is the single source for every value in the mod metadata.
+    val metadata = mapOf(
+        "mod_id" to gradleProp("showcase_mod_id"),
+        "mod_name" to gradleProp("showcase_mod_name"),
+        "mod_version" to project.version.toString(),
+        "mod_authors" to gradleProp("showcase_mod_authors"),
+        "mod_description" to gradleProp("showcase_mod_description"),
+        "mod_license" to gradleProp("mod_license"),
+        "loader_version_range" to gradleProp("loader_version_range"),
+        "neo_version_range" to gradleProp("neo_version_range"),
+        "minecraft_version_range" to gradleProp("minecraft_version_range"),
+    )
+    inputs.properties(metadata)
+    filesMatching("META-INF/neoforge.mods.toml") { expand(metadata) }
 }

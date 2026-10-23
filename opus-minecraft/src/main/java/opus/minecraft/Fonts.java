@@ -21,6 +21,7 @@ public final class Fonts {
     public enum Source { BUILTIN, SYSTEM, FILE }
     public record FontOption(String id, String label, Source source) {}
 
+    private static final String SYSTEM_PREFIX = "opus:sys/", FILE_PREFIX = "opus:file/", CUSTOM_PREFIX = "opus:custom/";
     private static final org.slf4j.Logger LOGGER = com.mojang.logging.LogUtils.getLogger();
     private static final Map<String, SdfFont> CACHE = new HashMap<>();
     private static final Map<String, Path> REGISTERED = new LinkedHashMap<>();
@@ -51,7 +52,7 @@ public final class Fonts {
     public static List<FontOption> files() {
         List<FontOption> result = new ArrayList<>();
         for (var entry : fileEntries()) result.add(new FontOption(entry.id(), label(entry.name()), Source.FILE));
-        REGISTERED.forEach((id, path) -> result.add(new FontOption(id, path.getFileName().toString(), Source.FILE)));
+        REGISTERED.forEach((id, path) -> result.add(new FontOption(id, id.substring(CUSTOM_PREFIX.length()), Source.FILE)));
         return List.copyOf(result);
     }
 
@@ -64,7 +65,7 @@ public final class Fonts {
 
     /** Use an explicit font for consistent typography on different computers. Returns the ID for Text's fontId. */
     public static String register(String name, Path ttf) {
-        String id = "opus:custom/" + name;
+        String id = CUSTOM_PREFIX + name;
         if (ResourceLocation.tryParse(id) == null || name.isBlank()) throw new IllegalArgumentException("Invalid font name: " + name);
         Path path = ttf.toAbsolutePath().normalize();
         if (!Files.isRegularFile(path) || !path.toString().toLowerCase(Locale.ROOT).endsWith(".ttf")) {
@@ -102,7 +103,7 @@ public final class Fonts {
         if (systemFonts == null) {
             var roots = FontDiscovery.systemDirectories(System.getProperty("os.name", ""),
                 Path.of(System.getProperty("user.home", ".")), System.getenv());
-            systemFonts = FontDiscovery.scan(roots, "opus:sys/").stream()
+            systemFonts = FontDiscovery.scan(roots, SYSTEM_PREFIX).stream()
                 .sorted(Comparator.comparingInt((FontDiscovery.Entry entry) -> {
                     int index = PREFERRED.indexOf(entry.name().toLowerCase(Locale.ROOT));
                     return index < 0 ? Integer.MAX_VALUE : index;
@@ -112,13 +113,13 @@ public final class Fonts {
     }
 
     private static List<FontDiscovery.Entry> fileEntries() {
-        if (fileFonts == null) fileFonts = FontDiscovery.scan(List.of(directory()), "opus:file/");
+        if (fileFonts == null) fileFonts = FontDiscovery.scan(List.of(directory()), FILE_PREFIX);
         return fileFonts;
     }
 
     private static Path resolve(String id) {
         if (REGISTERED.containsKey(id)) return REGISTERED.get(id);
-        List<FontDiscovery.Entry> entries = id.startsWith("opus:sys/") ? systemEntries() : fileEntries();
+        List<FontDiscovery.Entry> entries = id.startsWith(SYSTEM_PREFIX) ? systemEntries() : fileEntries();
         return entries.stream().filter(entry -> entry.id().equals(id)).map(FontDiscovery.Entry::path).findFirst().orElse(null);
     }
 
@@ -148,7 +149,7 @@ public final class Fonts {
     }
 
     static boolean isCustom(String id) {
-        return id != null && (id.startsWith("opus:sys/") || id.startsWith("opus:file/") || id.startsWith("opus:custom/"));
+        return id != null && (id.startsWith(SYSTEM_PREFIX) || id.startsWith(FILE_PREFIX) || id.startsWith(CUSTOM_PREFIX));
     }
 
     static void clearCache() {

@@ -83,8 +83,9 @@ object Ui {
 
     @JvmStatic fun theme(theme: Theme, content: Runnable) = Theme(theme) { content.run() }
     @JvmStatic @JvmOverloads
-    fun surface(content: Runnable, modifier: Modifier = Modifier) = Box(
-        modifier.background(LocalTheme.current.colors.surface, LocalTheme.current.shapes.cornerRadius)) { content.run() }
+    fun surface(content: Runnable, modifier: Modifier = Modifier): Unit = LocalTheme.current.let { theme ->
+        Box(modifier.background(theme.colors.surface, theme.shapes.cornerRadius)) { content.run() }
+    }
     @JvmStatic @JvmOverloads
     fun switchControl(checked: Boolean, onChange: Consumer<Boolean>, modifier: Modifier = Modifier,
                       accent: Int = LocalTheme.current.colors.accent) = Switch(checked, { onChange.accept(it) }, modifier, accent)
@@ -95,9 +96,9 @@ object Ui {
     fun radioGroup(options: List<String>, selectedIndex: Int, onSelect: Consumer<Int>, modifier: Modifier = Modifier,
                    accent: Int = LocalTheme.current.colors.accent) = RadioGroup(options, selectedIndex, { onSelect.accept(it) }, modifier, accent)
     @JvmStatic @JvmOverloads
-    fun dropdown(options: List<String>, selectedIndex: Int, onSelect: Consumer<Int>, expanded: Boolean,
-                 onExpandedChange: Consumer<Boolean>, modifier: Modifier = Modifier) =
-        Dropdown(options, selectedIndex, { onSelect.accept(it) }, expanded, { onExpandedChange.accept(it) }, modifier)
+    fun dropdown(options: List<String>, selectedIndex: Int, onSelect: Consumer<Int>, modifier: Modifier = Modifier,
+                 placeholder: String = "", enabled: Boolean = true, accent: Int = LocalTheme.current.colors.accent) =
+        Dropdown(options, selectedIndex, { onSelect.accept(it) }, modifier, placeholder, enabled, accent)
     @JvmStatic @JvmOverloads
     fun multiSelect(options: List<String>, selected: Set<Int>, onChange: Consumer<Set<Int>>, modifier: Modifier = Modifier,
                     accent: Int = LocalTheme.current.colors.accent) = MultiSelect(options, selected, { onChange.accept(it) }, modifier, accent)

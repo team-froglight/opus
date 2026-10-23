@@ -2,14 +2,17 @@ package opus.minecraft;
 
 import opus.core.*;
 import org.lwjgl.glfw.GLFW;
+import java.util.Collections;
 import java.util.List;
-import java.util.HashSet;
 import java.util.Set;
+import java.util.TreeSet;
+import java.util.function.Consumer;
 
 /** Keyboard semantics for the existing declarative controls. */
 final class ControlKeyboard {
     private int option;
     int option() { return option; }
+    /** Starts option navigation on the current choice. */
     void focus(UiNode node) { option = number(node, "selectedIndex", 0).intValue(); }
 
     boolean key(UiNode node, int key, boolean shift) {
@@ -31,24 +34,31 @@ final class ControlKeyboard {
             }
             case "Dropdown", "RadioGroup", "MultiSelect" -> {
                 List<String> options = node.getOptions();
-                if (options == null || options.isEmpty()) return false;
+                if (options.isEmpty()) return false;
+                boolean closedMenu = node.getType().equals("Dropdown") && !Boolean.TRUE.equals(node.getProps().get("expanded"));
+                if (closedMenu && (direction != 0 || home || end || activate)) {
+                    // The first key opens the menu on the current choice rather than moving past it.
+                    focus(node);
+                    option = Math.clamp(option, 0, options.size() - 1);
+                    call(node.getEvents().getExpandedChange(), true);
+                    return true;
+                }
                 option = Math.clamp(option, 0, options.size() - 1);
                 if (direction != 0 || home || end) {
                     option = home ? 0 : end ? options.size() - 1 : Math.clamp(option + direction, 0, options.size() - 1);
                     if (node.getType().equals("RadioGroup")) call(node.getEvents().getSelect(), option);
-                    else if (node.getType().equals("Dropdown") && !Boolean.TRUE.equals(node.getProps().get("expanded"))) call(node.getEvents().getExpandedChange(), true);
                     return true;
                 }
                 if (!activate) return false;
                 if (node.getType().equals("MultiSelect")) {
-                    Set<Integer> selected = new java.util.TreeSet<>(node.getSelectedOptions());
+                    Set<Integer> selected = new TreeSet<>(node.getSelectedOptions());
                     if (!selected.remove(option)) selected.add(option);
-                    call(node.getEvents().getSelectionChange(), java.util.Collections.unmodifiableSet(selected));
+                    call(node.getEvents().getSelectionChange(), Collections.unmodifiableSet(selected));
                 } else if (node.getType().equals("RadioGroup")) call(node.getEvents().getSelect(), option);
-                else if (Boolean.TRUE.equals(node.getProps().get("expanded"))) {
+                else {
                     call(node.getEvents().getSelect(), option);
                     call(node.getEvents().getExpandedChange(), false);
-                } else call(node.getEvents().getExpandedChange(), true);
+                }
                 return true;
             }
             case "Pagination" -> {
@@ -83,7 +93,7 @@ final class ControlKeyboard {
     private static Number number(UiNode node, String name, Number fallback) {
         return node.getProps().get(name) instanceof Number number ? number : fallback;
     }
-    private static <T> void call(java.util.function.Consumer<T> callback, T value) {
+    private static <T> void call(Consumer<T> callback, T value) {
         if (callback != null) callback.accept(value);
     }
 }

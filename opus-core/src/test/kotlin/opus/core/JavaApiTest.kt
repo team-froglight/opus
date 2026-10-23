@@ -16,8 +16,7 @@ class JavaApiTest {
             assertEquals("Next >", controls[0].props["nextLabel"])
             assertEquals("Раніше", controls[1].props["previousLabel"])
             assertEquals("Далі", controls[1].props["nextLabel"])
-            @Suppress("UNCHECKED_CAST")
-            (controls[1].props["onPageChange"] as (Int) -> Unit)(2)
+            controls[1].events.pageChange!!.accept(2)
             assertEquals(listOf(2, 2), composition.root.findAll("Pagination").map { it.props["page"] })
         }
     }

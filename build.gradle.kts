@@ -22,6 +22,21 @@ abstract class VerifyLibraryManifest : DefaultTask() {
 plugins {
     `maven-publish`
     `version-catalog`
+    // Versioned once here from the catalog; modules apply it by id.
+    alias(libs.plugins.kotlin.jvm) apply false
+}
+
+/** The local verification repository and GitHub Packages, shared by the catalog and every library. */
+fun RepositoryHandler.publicationRepositories() {
+    maven { name = "Verification"; url = uri(rootProject.layout.buildDirectory.dir("verification-maven")) }
+    maven {
+        name = "GitHubPackages"
+        url = uri("https://maven.pkg.github.com/team-froglight/opus")
+        credentials {
+            username = providers.gradleProperty("gpr.user").orElse(providers.environmentVariable("GITHUB_ACTOR")).orNull
+            password = providers.gradleProperty("gpr.key").orElse(providers.environmentVariable("GITHUB_TOKEN")).orNull
+        }
+    }
 }
 
 group = providers.gradleProperty("mod_group_id").get()
@@ -45,17 +60,7 @@ publishing {
             from(components["versionCatalog"])
         }
     }
-    repositories {
-        maven { name = "Verification"; url = uri(layout.buildDirectory.dir("verification-maven")) }
-        maven {
-            name = "GitHubPackages"
-            url = uri("https://maven.pkg.github.com/team-froglight/opus")
-            credentials {
-                username = providers.gradleProperty("gpr.user").orElse(providers.environmentVariable("GITHUB_ACTOR")).orNull
-                password = providers.gradleProperty("gpr.key").orElse(providers.environmentVariable("GITHUB_TOKEN")).orNull
-            }
-        }
-    }
+    repositories { publicationRepositories() }
 }
 
 // One host classifier for development and tests. Published Yoga jars carry all supported platforms.
@@ -104,24 +109,17 @@ subprojects {
                         from(components["java"])
                         pom {
                             name.set(project.name)
-                            description.set("Opus declarative UI library for Minecraft 1.21.1 / NeoForge 21.1")
+                            val minecraft = providers.gradleProperty("minecraft_version").get()
+                            val neoForge = providers.gradleProperty("neo_version").get().substringBeforeLast('.')
+                            description.set("Opus declarative UI library for Minecraft $minecraft / NeoForge $neoForge")
                             url.set("https://github.com/team-froglight/opus")
-                            licenses { license { name.set("MIT"); url.set("https://opensource.org/licenses/MIT") } }
+                            val licenseName = providers.gradleProperty("mod_license").get()
+                            licenses { license { name.set(licenseName); url.set("https://opensource.org/licenses/$licenseName") } }
                             scm { url.set("https://github.com/team-froglight/opus") }
                         }
                     }
                 }
-                repositories {
-                    maven { name = "Verification"; url = uri(rootProject.layout.buildDirectory.dir("verification-maven")) }
-                    maven {
-                        name = "GitHubPackages"
-                        url = uri("https://maven.pkg.github.com/team-froglight/opus")
-                        credentials {
-                            username = providers.gradleProperty("gpr.user").orElse(providers.environmentVariable("GITHUB_ACTOR")).orNull
-                            password = providers.gradleProperty("gpr.key").orElse(providers.environmentVariable("GITHUB_TOKEN")).orNull
-                        }
-                    }
-                }
+                repositories { publicationRepositories() }
             }
         }
     }

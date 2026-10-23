@@ -11,6 +11,8 @@ import opus.core.Composition;
 import opus.core.ScrollGestures;
 import opus.core.ScrollGestureUpdate;
 import opus.core.SwipeDirection;
+import org.lwjgl.glfw.GLFW;
+
 import java.util.function.Consumer;
 
 /**
@@ -102,11 +104,12 @@ public class UiScreen extends Screen {
         return new UiScreen(() -> { content.run(); return Unit.INSTANCE; });
     }
 
+    /** Replaces the current screen. Call on the client thread. */
     public static void open(Runnable content) {
         Minecraft.getInstance().setScreen(create(content));
     }
 
-    /** Opens a screen on the client thread. */
+    /** Kotlin counterpart of {@link #open(Runnable)}. Call on the client thread; this does not schedule onto it. */
     public static void show(Function0<Unit> content) {
         Minecraft.getInstance().setScreen(new UiScreen(content));
     }
@@ -180,8 +183,8 @@ public class UiScreen extends Screen {
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
         scrollGestures.suppressSwipe();
         gestureHint.clear();
-        if (keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_ESCAPE && renderer != null && composition != null
-            && renderer.dismissDropdowns(composition)) return true;
+        if (keyCode == GLFW.GLFW_KEY_ESCAPE && renderer != null && composition != null
+            && renderer.dismissOverlays(composition)) return true;
         if (renderer != null && composition != null && renderer.handleKey(composition, keyCode, scanCode, modifiers)) {
             scrollY = renderer.revealFocus(composition, scrollY, height);
             return true;
@@ -259,7 +262,7 @@ public class UiScreen extends Screen {
         scrollGestures.reset();
         gestureHint.clear();
         if (renderer != null) {
-            renderer.yoga().close();
+            renderer.close();
             renderer = null;
         }
         if (composition != null) {

@@ -14,6 +14,8 @@ import opus.core.padding
 import opus.core.paddingEach
 import opus.core.setContent
 import opus.core.weight
+import opus.core.alignItems
+import opus.core.justifyContent
 import opus.core.width
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -26,6 +28,25 @@ private val fakeMeasurer = object : TextMeasurer {
 }
 
 class YogaLayoutTest {
+    @Test fun alignmentCentersTheCrossAxisAndDistributesTheMainAxis() {
+        val c = setContent {
+            Row(Modifier.width(200f).height(40f).alignItems(opus.core.Align.CENTER)
+                .justifyContent(opus.core.Justify.SPACE_BETWEEN)) {
+                opus.core.Box(Modifier.width(20f).height(20f)) {}
+                Text("Label")
+            }
+        }
+        YogaTree(fakeMeasurer).use { tree ->
+            tree.layout(c.root, c, 400f, 400f)
+            val (icon, label) = c.root.children.single().children
+            assertEquals(10f, icon.y, 0.01f)
+            assertEquals(14f, label.y, 0.01f)
+            assertEquals(0f, icon.x, 0.01f)
+            assertEquals(200f - 30f, label.x, 0.01f)
+        }
+        c.close()
+    }
+
     @Test fun scopedTypographyUsesSizedMeasurementAndInvalidatesLayout() {
         val size = opus.core.mutableStateOf(24f)
         setContent {

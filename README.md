@@ -362,3 +362,14 @@ outermost content's theme. Override `showsScrollbar()` to draw your own. Tooltip
 pointer and flip to its other side near the screen edges. Keyboard focus rings sit inside the control
 and hug what it paints, so full-width rows and headers never get a ring wider than their content.
 Holding a `NumberField` arrow repeats the step after 400 ms, every 50 ms, while the pointer stays on it.
+
+## Alignment and text placement
+
+Rows, columns and boxes stretch their children across the cross axis by default. Use
+`Modifier.alignItems(Align.CENTER)` to center an icon and its label in a row, and
+`Modifier.justifyContent(Justify.SPACE_BETWEEN)` (or `START`, `CENTER`, `END`) to distribute
+children along the main axis. Avoid padding-based centering: labels center on the 7-unit band of
+capitals and x-height letters (`InputMetrics.CAP_HEIGHT`), and layout rounds to screen pixels at the
+current GUI scale, so half-unit centers stay exact. Pixel icons snap to screen pixels as well, so an
+icon and its label share a center. `ItemSlot` scales its item by whole pixels to fit larger slots;
+pass `framed = false` to drop its background in menus and rows.

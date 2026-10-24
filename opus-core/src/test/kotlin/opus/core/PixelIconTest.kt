@@ -13,6 +13,15 @@ class PixelIconTest {
         assertFailsWith<IllegalArgumentException> { PixelIcon.scaleForSize(Float.NaN, 20f) }
     }
 
+    @Test fun symmetricSymbolsAreCenteredOnTheMiddleCell() {
+        for (icon in listOf(PixelIcon.PLUS, PixelIcon.CLOSE, PixelIcon.COIN)) {
+            for (y in 0 until PixelIcon.SIZE) for (x in 0 until PixelIcon.SIZE) {
+                assertEquals(icon.pixelAt(x, y), icon.pixelAt(PixelIcon.SIZE - 1 - x, y), "$icon mirrors horizontally at $x,$y")
+                assertEquals(icon.pixelAt(x, y), icon.pixelAt(x, PixelIcon.SIZE - 1 - y), "$icon mirrors vertically at $x,$y")
+            }
+        }
+    }
+
     @Test fun everySymbolUsesANonemptyDistinctNinePixelGrid() {
         val patterns = PixelIcon.entries.map { icon ->
             (0 until PixelIcon.SIZE).flatMap { y -> (0 until PixelIcon.SIZE).map { x -> icon.pixelAt(x, y) } }

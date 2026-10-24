@@ -306,8 +306,13 @@ final class InputFields {
             try {
                 if (options.showsPlaceholder(value(), widget.isFocused())) {
                     if (widget instanceof Area) g.drawWordWrap(font, Component.literal(options.getPlaceholder()), x + 8, boxY + 8, width - 24, colors.getMuted());
-                    else g.drawString(font, font.plainSubstrByWidth(options.getPlaceholder(), widget.getWidth()),
-                        widget.getX(), widget.getY(), colors.getMuted(), false);
+                    else {
+                        g.pose().pushPose();
+                        g.pose().translate(0, InputMetrics.TEXT_NUDGE, 0);
+                        g.drawString(font, font.plainSubstrByWidth(options.getPlaceholder(), widget.getWidth()),
+                            widget.getX(), widget.getY(), colors.getMuted(), false);
+                        g.pose().popPose();
+                    }
                 }
                 if (node.getProps().get("leadingIcon") instanceof PixelIcon icon) {
                     PixelIconRenderer.draw(g, icon, x + InputMetrics.CONTENT_INSET + PixelIcon.SIZE / 2f,
@@ -319,7 +324,7 @@ final class InputFields {
             if (!support.isEmpty()) g.drawWordWrap(font, Component.literal(support), x, boxY + fieldHeight + 5, width,
                 options.getError() != null ? colors.getError() : colors.getMuted());
             if (node.getType().equals("DateField")) {
-                DatePicker.icon(g, x + width - 21, boxY + 7, interactive && !options.getReadOnly() ? accent : colors.getMuted());
+                DatePicker.icon(g, x + width - 21, boxY + fieldHeight / 2f - 6, interactive && !options.getReadOnly() ? accent : colors.getMuted());
             } else if (node.getType().equals("NumberField")) {
                 float left = x + width - 28, middle = boxY + fieldHeight / 2f;
                 ShapeRenderer.line(g, left, boxY + 3, left, boxY + fieldHeight - 3, 1, colors.getOutline());
@@ -384,6 +389,13 @@ final class InputFields {
                 return;
             }
             if (!isVisible()) return;
+            g.pose().pushPose();
+            g.pose().translate(0, InputMetrics.TEXT_NUDGE, 0);
+            try { paintText(g); } finally { g.pose().popPose(); }
+        }
+
+        /** Text, selection and caret, all centered on the cap band (rows 0 to 6 of the glyph cell). */
+        private void paintText(GuiGraphics g) {
             String value = getValue();
             int start = Math.clamp((int) DISPLAY_POS.get(this), 0, value.length());
             String visible = font.plainSubstrByWidth(value.substring(start), getInnerWidth());
@@ -391,7 +403,7 @@ final class InputFields {
             int cursor = getCursorPosition() - start;
             int lo = Math.clamp(Math.min(cursor, highlight - start), 0, visible.length());
             int hi = Math.clamp(Math.max(cursor, highlight - start), 0, visible.length());
-            if (lo < hi) g.fill(x + font.width(visible.substring(0, lo)), y - 1, x + font.width(visible.substring(0, hi)), y + 10, selectionColor);
+            if (lo < hi) g.fill(x + font.width(visible.substring(0, lo)), y - 2, x + font.width(visible.substring(0, hi)), y + 9, selectionColor);
             g.drawString(font, visible, x, y, editable ? textColor : uneditableColor, false);
             long now = System.nanoTime();
             // Restart the blink on every edit or cursor move so the caret stays visible while typing.
@@ -402,7 +414,7 @@ final class InputFields {
             if (showCaret && super.isFocused() && blinkOn && cursor >= 0 && cursor <= visible.length()) {
                 // Sit in the previous glyph's spacing column rather than on the next glyph.
                 int caretX = cursor == 0 ? x : x + font.width(visible.substring(0, cursor)) - 1;
-                g.fill(caretX, y - 1, caretX + 1, y + 10, caretColor);
+                g.fill(caretX, y - 2, caretX + 1, y + 9, caretColor);
             }
         }
         @Override public void onClick(double x, double y) { super.onClick(x, y); anchor = getCursorPosition(); }

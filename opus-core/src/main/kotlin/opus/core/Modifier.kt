@@ -85,6 +85,20 @@ fun Modifier.offset(x: Float, y: Float): Modifier = then(Offset(x, y))
 fun Modifier.opacity(alpha: Float): Modifier = then(Opacity(alpha))
 fun Modifier.inputEnabled(enabled: Boolean): Modifier = then(InputEnabled(enabled))
 
+/** Placement along a container's cross axis: vertical in a [Row], horizontal in a [Column] or [Box]. */
+enum class Align { START, CENTER, END, STRETCH }
+/** Distribution along a container's main axis. */
+enum class Justify { START, CENTER, END, SPACE_BETWEEN }
+
+/** Cross-axis placement of a container's children. Children stretch by default. */
+data class AlignItems(val align: Align) : Modifier.Element
+/** Main-axis distribution of a container's children. Children start at the leading edge by default. */
+data class JustifyContent(val justify: Justify) : Modifier.Element
+
+/** For example, `Row(Modifier.alignItems(Align.CENTER))` centers an icon and a label vertically. */
+fun Modifier.alignItems(align: Align): Modifier = then(AlignItems(align))
+fun Modifier.justifyContent(justify: Justify): Modifier = then(JustifyContent(justify))
+
 // ---- Style elements (drawn by the GL style layer) ----
 
 data class Background(val color: Int, val cornerRadius: Float? = null) : Modifier.Element

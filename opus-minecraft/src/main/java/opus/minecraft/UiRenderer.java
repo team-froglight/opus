@@ -1,6 +1,7 @@
 package opus.minecraft;
 
 import com.mojang.blaze3d.systems.RenderSystem;
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.Screen;
@@ -98,6 +99,9 @@ public class UiRenderer implements AutoCloseable {
     }
 
     public void layout(Composition composition, float width, float height) {
+        // Round layout to screen pixels, not GUI units, so centered content keeps its half-unit offsets.
+        Minecraft minecraft = Minecraft.getInstance();
+        if (minecraft != null) yoga.setPointScaleFactor((float) minecraft.getWindow().getGuiScale());
         yoga.layout(composition.getRoot(), composition, width, height);
         visuals = new VisualTree(composition.getRoot());
         layoutVersion = composition.getCompositionVersion();
@@ -283,11 +287,12 @@ public class UiRenderer implements AutoCloseable {
         if (outline != null) {
             ShapeRenderer.outline(g, x, y, w, h, radius, outline.getWidth(), outline.getOffset(), outline.getColor(), notch);
         }
+        int fill = bg == null ? 0 : surfaceHoverTint(node, bg.getColor(), x, y, w, h);
         if (bg != null && border == null && !isContentPainted(node.getType())) {
-            ShapeRenderer.rounded(g, x, y, w, h, radius, radius, radius, radius, bg.getColor(), notch);
+            ShapeRenderer.rounded(g, x, y, w, h, radius, radius, radius, radius, fill, notch);
         }
         if (border != null) {
-            Integer bgc = bg != null ? bg.getColor() : null;
+            Integer bgc = bg != null ? fill : null;
             ShapeRenderer.border(g, x, y, w, h, radius, border.getWidth(), border.getColor(), bgc, notch);
         }
 
@@ -335,6 +340,21 @@ public class UiRenderer implements AutoCloseable {
     /** A 14px box, its 4px gap and label, with padding for the ring on both sides. */
     private float labelledControlWidth(String label) {
         return label == null || label.isEmpty() ? 20 : 3 + 18 + font.width(label) + 5;
+    }
+
+    /**
+     * Clickable surfaces (a clickable modifier on a non-button node with a background) brighten on
+     * hover like buttons do, so cards and rows read as interactive.
+     */
+    private int surfaceHoverTint(UiNode node, int color, float x, float y, float w, float h) {
+        if (node.getType().equals("Button") || node.getIdentity() == null) return color;
+        boolean clickable = false;
+        for (Modifier.Element element : Modifiers.elements(node.getModifier())) clickable |= element instanceof Clickable;
+        if (!clickable) return color;
+        boolean hovered = visuals.bounds(node).getInputEnabled() && isHovered(x, y, w, h);
+        float hover = hoverFeedback.computeIfAbsent(node.getIdentity(), ignored -> new HoverFeedback())
+            .sample(hovered, frameNanos, durationScale);
+        return hover <= 0f ? color : brighten(color, Math.round(14f * hover));
     }
 
     private boolean hasKeyboardFocus(UiNode node) {
@@ -388,8 +408,7 @@ public class UiRenderer implements AutoCloseable {
                 if (i == selected) ShapeRenderer.rounded(g, x + 4, rowY, w - 8, DropdownMetrics.ROW_HEIGHT - 1, 4, 4, 4, 4, colors.getSelection());
                 if (i == active) ShapeRenderer.rounded(g, x + 4, rowY, w - 8, DropdownMetrics.ROW_HEIGHT - 1, 4, 4, 4, 4, colors.getHighlight());
                 String label = font.plainSubstrByWidth(options.get(i), Math.max(0, (int) w - 36));
-                g.drawString(font, label, (int) x + 10, (int) (rowY + (DropdownMetrics.ROW_HEIGHT - font.lineHeight) / 2),
-                    colors.getOnSurface(), false);
+                drawLabel(g, label, x + 10, rowY, DropdownMetrics.ROW_HEIGHT - 1, colors.getOnSurface(), false);
                 if (i == selected) drawCheck(g, x + w - 24, rowY + 3, intProp(node, "accent", colors.getAccent()));
             }
         } finally { g.disableScissor(); }
@@ -445,7 +464,8 @@ public class UiRenderer implements AutoCloseable {
                     break;
                 }
                 g.pose().pushPose();
-                g.pose().translate(textX, textY, 0);
+                // Center the cap band in the line box, as every control label does.
+                g.pose().translate(textX, InputMetrics.labelTop(textY, textSize, scale), 0);
                 g.pose().scale(scale, scale, 1f);
                 if (fontId != null && !Fonts.isCustom(fontId)) {
                     try {
@@ -475,7 +495,7 @@ public class UiRenderer implements AutoCloseable {
                 } else if (node.getProps().get("icon") instanceof PixelIcon icon) {
                     PixelIconRenderer.draw(g, icon, x + w / 2f, y + h / 2f, content);
                 } else {
-                    g.drawCenteredString(font, str(node, "text", ""), (int) (x + w / 2), (int) (y + h / 2 - 4 + InputMetrics.TEXT_OFFSET_Y), content);
+                    drawCenteredLabel(g, str(node, "text", ""), x + w / 2f, y, h, content);
                 }
             }
             case "Checkbox" -> {
@@ -484,7 +504,7 @@ public class UiRenderer implements AutoCloseable {
                 ShapeRenderer.rounded(g, x, y, 14f, 14f, 4f, 4f, 4f, 4f, checked ? accent : colors.getSurface());
                 if (checked) drawCheck(g, x, y, colors.getOnAccent());
                 String label = str(node, "label", null);
-                if (label != null) g.drawString(font, label, (int) x + 18, (int) y + 3, colors.getOnSurface(), false);
+                if (label != null) drawLabel(g, label, x + 18, y, 14, colors.getOnSurface(), false);
             }
             case "RadioButton" -> {
                 boolean selected = bool(node, "selected", false);
@@ -492,7 +512,7 @@ public class UiRenderer implements AutoCloseable {
                 ShapeRenderer.rounded(g, x, y, 14f, 14f, 7f, 7f, 7f, 7f, colors.getSurface());
                 if (selected) ShapeRenderer.rounded(g, x + 4, y + 4, 6f, 6f, 3f, 3f, 3f, 3f, accent);
                 String label = str(node, "label", null);
-                if (label != null) g.drawString(font, label, (int) x + 18, (int) y + 3, colors.getOnSurface(), false);
+                if (label != null) drawLabel(g, label, x + 18, y, 14, colors.getOnSurface(), false);
             }
             case "RadioGroup" -> {
                 List<String> options = node.getOptions();
@@ -502,7 +522,7 @@ public class UiRenderer implements AutoCloseable {
                     float iy = y + i * ControlMetrics.OPTION_ROW_HEIGHT;
                     ShapeRenderer.rounded(g, x, iy, 14f, 14f, 7f, 7f, 7f, 7f, colors.getSurface());
                     if (i == sel) ShapeRenderer.rounded(g, x + 4, iy + 4, 6f, 6f, 3f, 3f, 3f, 3f, accent);
-                    g.drawString(font, options.get(i), (int) x + 18, (int) iy + 3, colors.getOnSurface(), false);
+                    drawLabel(g, options.get(i), x + 18, iy, 14, colors.getOnSurface(), false);
                 }
             }
             case "Switch" -> {
@@ -546,17 +566,27 @@ public class UiRenderer implements AutoCloseable {
                 }
             }
             case "ItemSlot" -> {
-                ShapeRenderer.rounded(g, x, y, Math.max(w, 20f), Math.max(h, 20f), 4f, 4f, 4f, 4f, colors.getSurface());
+                float slotW = Math.max(w, 20f), slotH = Math.max(h, 20f);
+                if (bool(node, "framed", true)) ShapeRenderer.rounded(g, x, y, slotW, slotH, 4f, 4f, 4f, 4f, colors.getSurface());
                 String itemId = str(node, "itemId", "minecraft:stone");
                 int count = intProp(node, "count", 1);
                 try {
                     var item = BuiltInRegistries.ITEM.get(ResourceLocation.parse(itemId));
                     ItemStack stack = new ItemStack(item, count);
-                    g.renderItem(stack, (int) x + 2, (int) y + 2);
+                    // Whole-pixel scale keeps item sprites crisp; larger slots show a larger, centered item.
+                    int scale = Math.max(1, (int) ((Math.min(slotW, slotH) - 4) / 16));
+                    int size = 16 * scale;
+                    int itemX = Math.round(x + (slotW - size) / 2f), itemY = Math.round(y + (slotH - size) / 2f);
+                    g.pose().pushPose();
+                    g.pose().translate(itemX, itemY, 0);
+                    g.pose().scale(scale, scale, 1f);
+                    g.renderItem(stack, 0, 0);
+                    g.pose().popPose();
                     if (count > 1) {
+                        // Minecraft places the count on the item's bottom-right corner, not the slot's.
                         String label = String.valueOf(count);
-                        int right = (int) (x + Math.max(w, 20f) - 2);
-                        int bottom = (int) (y + Math.max(h, 20f) - 2);
+                        int right = itemX + size + 1;
+                        int bottom = itemY + size + 1;
                         g.pose().pushPose();
                         g.pose().translate(0, 0, 200);
                         // Item counts keep Minecraft's white, shadowed style.
@@ -576,19 +606,17 @@ public class UiRenderer implements AutoCloseable {
                 float actionWidth = ControlMetrics.paginationActionWidth(w);
                 ShapeRenderer.rounded(g, x, y, actionWidth, h, 4f, 4f, 4f, 4f, colors.getSurfaceVariant());
                 ShapeRenderer.rounded(g, x + w - actionWidth, y, actionWidth, h, 4f, 4f, 4f, 4f, colors.getSurfaceVariant());
-                int labelY = (int) (y + h / 2f - 4f);
                 int labelWidth = Math.max(0, (int) actionWidth - 8);
                 String previous = font.plainSubstrByWidth(str(node, "previousLabel", "< Prev"), labelWidth);
                 String next = font.plainSubstrByWidth(str(node, "nextLabel", "Next >"), labelWidth);
-                g.drawCenteredString(font, previous, (int) (x + actionWidth / 2f), labelY, page > 0 ? colors.getOnSurface() : colors.getDisabledContent());
-                g.drawCenteredString(font, (page + 1) + " / " + count, (int) (x + w / 2), labelY, colors.getMuted());
-                g.drawCenteredString(font, next, (int) (x + w - actionWidth / 2f), labelY, page < count - 1 ? colors.getOnSurface() : colors.getDisabledContent());
+                drawCenteredLabel(g, previous, x + actionWidth / 2f, y, h, page > 0 ? colors.getOnSurface() : colors.getDisabledContent());
+                drawCenteredLabel(g, (page + 1) + " / " + count, x + w / 2f, y, h, colors.getMuted());
+                drawCenteredLabel(g, next, x + w - actionWidth / 2f, y, h, page < count - 1 ? colors.getOnSurface() : colors.getDisabledContent());
             }
             case "Accordion" -> {
                 PixelIconRenderer.draw(g, bool(node, "expanded", false) ? PixelIcon.CHEVRON_DOWN : PixelIcon.CHEVRON_RIGHT,
                     x + 8, y + ControlMetrics.ACCORDION_HEADER_HEIGHT / 2f, colors.getOnSurface());
-                // Glyphs are 8 units tall, so this centers the title in the header like the chevron.
-                g.drawString(font, str(node, "title", ""), (int) x + 16, (int) (y + (ControlMetrics.ACCORDION_HEADER_HEIGHT - 8) / 2), colors.getOnSurface(), false);
+                drawLabel(g, str(node, "title", ""), x + 16, y, ControlMetrics.ACCORDION_HEADER_HEIGHT, colors.getOnSurface(), false);
             }
             case "Dropdown" -> {
                 // The header only; the open menu is painted in the overlay layer.
@@ -604,8 +632,7 @@ public class UiRenderer implements AutoCloseable {
                 boolean hasValue = sel >= 0 && sel < options.size();
                 String label = hasValue ? options.get(sel) : str(node, "placeholder", "");
                 int textColor = !enabled ? colors.getDisabledContent() : hasValue ? colors.getOnSurface() : colors.getMuted();
-                g.drawString(font, font.plainSubstrByWidth(label, Math.max(0, (int) w - 32)),
-                    (int) x + 9, (int) (y + (header - font.lineHeight) / 2), textColor, false);
+                drawLabel(g, font.plainSubstrByWidth(label, Math.max(0, (int) w - 32)), x + 9, y, header, textColor, false);
                 PixelIconRenderer.draw(g, expanded ? PixelIcon.CHEVRON_UP : PixelIcon.CHEVRON_DOWN,
                     x + w - 14, y + header / 2, enabled ? colors.getMuted() : colors.getDisabledContent());
             }
@@ -618,12 +645,28 @@ public class UiRenderer implements AutoCloseable {
                     boolean s = selected.contains(i);
                     ShapeRenderer.rounded(g, x, iy, 14f, 14f, 4f, 4f, 4f, 4f, s ? accent : colors.getSurface());
                     if (s) drawCheck(g, x, iy, colors.getOnAccent());
-                    g.drawString(font, options.get(i), (int) x + 18, (int) iy + 3, colors.getOnSurface(), false);
+                    drawLabel(g, options.get(i), x + 18, iy, 14, colors.getOnSurface(), false);
                 }
             }
             default -> {
             }
         }
+    }
+
+    /**
+     * Draws a one-line label with its cap band centered in a box. Positions stay fractional: at GUI
+     * scale 2 a half unit is a whole screen pixel, so rounding to units would visibly shift labels.
+     */
+    private void drawLabel(GuiGraphics g, String text, float x, float boxTop, float boxHeight, int color, boolean shadow) {
+        g.pose().pushPose();
+        g.pose().translate(x, InputMetrics.labelTop(boxTop, boxHeight), 0);
+        g.drawString(font, text, 0, 0, color, shadow);
+        g.pose().popPose();
+    }
+
+    /** Button-style label: horizontally centered on [centerX], with Minecraft's shadow. */
+    private void drawCenteredLabel(GuiGraphics g, String text, float centerX, float boxTop, float boxHeight, int color) {
+        drawLabel(g, text, centerX - font.width(text) / 2f, boxTop, boxHeight, color, true);
     }
 
     private static void drawCheck(GuiGraphics g, float x, float y, int color) {

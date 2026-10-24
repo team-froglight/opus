@@ -116,8 +116,8 @@ object Ui {
     @JvmStatic @JvmOverloads
     fun image(textureId: String, modifier: Modifier = Modifier, description: String? = null) = Image(textureId, modifier, description)
     @JvmStatic @JvmOverloads
-    fun itemSlot(itemId: String, count: Int = 1, modifier: Modifier = Modifier, onClick: Runnable? = null) =
-        ItemSlot(itemId, count, modifier, onClick?.let { { it.run() } })
+    fun itemSlot(itemId: String, count: Int = 1, modifier: Modifier = Modifier, onClick: Runnable? = null, framed: Boolean = true) =
+        ItemSlot(itemId, count, modifier, onClick?.let { { it.run() } }, framed)
     @JvmStatic @JvmOverloads
     fun progressBar(progress: Float, modifier: Modifier = Modifier, accent: Int = LocalTheme.current.colors.accent) =
         ProgressBar(progress, modifier, accent)

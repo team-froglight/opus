@@ -132,8 +132,18 @@ object InputMetrics {
     const val FIELD_HEIGHT = 28f
     const val CONTENT_INSET = 8
     const val ICON_GAP = 7
-    const val TEXT_OFFSET_Y = -1
-    const val TEXT_TOP = 10 + TEXT_OFFSET_Y
+    /** Vanilla glyph cells are 8 units tall: 7 rows of capitals and x-height letters, then a descender row. */
+    const val GLYPH_HEIGHT = 8
+    /** The rows the eye reads as the text's body; labels center this band, not the whole cell. */
+    const val CAP_HEIGHT = 7
+    const val TEXT_OFFSET_Y = 0
+    /** Editors sit at whole units, so they round the band's top down and paint [TEXT_NUDGE] lower. */
+    const val TEXT_TOP = (FIELD_HEIGHT.toInt() - CAP_HEIGHT) / 2 + TEXT_OFFSET_Y
+    const val TEXT_NUDGE = (FIELD_HEIGHT - CAP_HEIGHT) / 2f - TEXT_TOP
+
+    /** Top of the glyph cell that centers a label's cap band in a box, in units of [scale]d glyphs. */
+    @JvmStatic @JvmOverloads fun labelTop(boxTop: Float, boxHeight: Float, scale: Float = 1f): Float =
+        boxTop + (boxHeight - CAP_HEIGHT * scale) / 2f
     @JvmStatic fun textInset(hasLeadingIcon: Boolean): Int =
         CONTENT_INSET + if (hasLeadingIcon) PixelIcon.SIZE + ICON_GAP else 0
     @JvmStatic fun textWidth(width: Int, hasLeadingIcon: Boolean, hasTrailingControl: Boolean): Int =

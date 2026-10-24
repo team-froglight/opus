@@ -30,8 +30,11 @@ class TextInputsTest {
         assertEquals(148, InputMetrics.textWidth(180, true, false))
         assertEquals(124, InputMetrics.textWidth(180, true, true))
         assertEquals(8, InputMetrics.textWidth(24, true, true))
-        assertEquals(-1, InputMetrics.TEXT_OFFSET_Y)
-        assertEquals(9, InputMetrics.TEXT_TOP)
+        assertEquals(0, InputMetrics.TEXT_OFFSET_Y)
+        assertEquals(10, InputMetrics.TEXT_TOP)
+        assertEquals(0.5f, InputMetrics.TEXT_NUDGE)
+        assertEquals(14.5f, InputMetrics.labelTop(10f, 9f) + InputMetrics.CAP_HEIGHT / 2f)
+        assertEquals(15f, InputMetrics.labelTop(0f, 30f) + InputMetrics.CAP_HEIGHT / 2f)
         assertEquals(42f, InputMetrics.height(1, InputOptions.DEFAULT))
     }
 

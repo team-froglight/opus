@@ -1,5 +1,7 @@
 package opus.yoga
 
+import opus.core.Align
+import opus.core.AlignItems
 import opus.core.Composition
 import opus.core.ControlMetrics
 import opus.core.DropdownMetrics
@@ -7,6 +9,8 @@ import opus.core.FillMax
 import opus.core.FixedSize
 import opus.core.InputMetrics
 import opus.core.InputOptions
+import opus.core.Justify
+import opus.core.JustifyContent
 import opus.core.Padding
 import opus.core.TextRole
 import opus.core.UiNode
@@ -50,6 +54,21 @@ class YogaTree(private val measurer: TextMeasurer) : AutoCloseable {
     private var lastBuildWidth = Float.NaN
     private var lastW = Float.NaN
     private var lastH = Float.NaN
+    private val config: Long = Yoga.YGConfigNew()
+
+    /**
+     * Physical pixels per layout unit, such as Minecraft's GUI scale. Yoga rounds positions to whole
+     * physical pixels, so at GUI scale 2 a centered child may land on a half unit instead of being
+     * pushed a whole unit up or down.
+     */
+    var pointScaleFactor: Float = 1f
+        set(value) {
+            require(value.isFinite() && value > 0f) { "pointScaleFactor must be positive and finite" }
+            if (value == field) return
+            field = value
+            Yoga.YGConfigSetPointScaleFactor(config, value)
+            lastW = Float.NaN // recalculate with the new rounding
+        }
 
     fun layout(root: UiNode, composition: Composition, width: Float, height: Float) {
         if (root !== lastRoot || composition.compositionVersion != lastCompositionVersion || width != lastBuildWidth || rootHandle == 0L) {
@@ -94,7 +113,7 @@ class YogaTree(private val measurer: TextMeasurer) : AutoCloseable {
     }
 
     private fun build(node: UiNode, parentType: String?, gridCellWidth: Float?, availableWidth: Float): Long {
-        val h = Yoga.YGNodeNew()
+        val h = Yoga.YGNodeNewWithConfig(config)
         handles[node] = h
 
         if (!node.visible) {
@@ -143,6 +162,18 @@ class YogaTree(private val measurer: TextMeasurer) : AutoCloseable {
                     if (el.heightFraction > 0f) Yoga.YGNodeStyleSetHeightPercent(h, el.heightFraction * 100f)
                 }
                 is Weight -> flexGrow = el.weight
+                is AlignItems -> Yoga.YGNodeStyleSetAlignItems(h, when (el.align) {
+                    Align.START -> Yoga.YGAlignFlexStart
+                    Align.CENTER -> Yoga.YGAlignCenter
+                    Align.END -> Yoga.YGAlignFlexEnd
+                    Align.STRETCH -> Yoga.YGAlignStretch
+                })
+                is JustifyContent -> Yoga.YGNodeStyleSetJustifyContent(h, when (el.justify) {
+                    Justify.START -> Yoga.YGJustifyFlexStart
+                    Justify.CENTER -> Yoga.YGJustifyCenter
+                    Justify.END -> Yoga.YGJustifyFlexEnd
+                    Justify.SPACE_BETWEEN -> Yoga.YGJustifySpaceBetween
+                })
                 else -> Unit // Offset/Background/Border/Shadow/Clip/Cutout/Clickable are draw-time
             }
         }
@@ -251,9 +282,16 @@ class YogaTree(private val measurer: TextMeasurer) : AutoCloseable {
         else -> ""
     }
 
+    private var configFreed = false
+
     override fun close() {
         freeNative()
         lastRoot = null
+        // Nodes are freed first; the config outlives every node created with it.
+        if (!configFreed) {
+            Yoga.YGConfigFree(config)
+            configFreed = true
+        }
     }
 
     private companion object {

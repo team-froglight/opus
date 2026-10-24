@@ -149,9 +149,10 @@ fun Image(textureId: String, modifier: Modifier = Modifier, contentDescription: 
 
 @Composable
 @JvmOverloads
-fun ItemSlot(itemId: String, count: Int = 1, modifier: Modifier = Modifier, onClick: (() -> Unit)? = null) {
+/** An item in a slot. Without a [framed] background the item sits directly on its container, such as a menu row. */
+fun ItemSlot(itemId: String, count: Int = 1, modifier: Modifier = Modifier, onClick: (() -> Unit)? = null, framed: Boolean = true) {
     val mod = if (onClick != null) modifier.clickable(onClick) else modifier
-    emit("ItemSlot", mod, mapOf("itemId" to itemId, "count" to count))
+    emit("ItemSlot", mod, mapOf("itemId" to itemId, "count" to count, "framed" to framed))
 }
 
 // ---- Overlays ----

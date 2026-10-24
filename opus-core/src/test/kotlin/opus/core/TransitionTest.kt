@@ -7,6 +7,7 @@ class TransitionTest {
     private fun Composition.label() = root.findAll("Text").single().props["text"]
     private fun Composition.opacity() = root.children.single().modifier.elements().filterIsInstance<Opacity>().single().alpha
 
+    // The exit takes 40% of the total, so 200 ms splits into an 80 ms exit and a 120 ms entrance.
     @Test fun exitsOldViewBeforeEnteringNewViewAndDisablesInput() {
         val page = mutableStateOf("A")
         val c = setContent { AnimatedContent(page.value, durationMillis = 200, easing = Easing.LINEAR) { Text(it) } }
@@ -14,13 +15,13 @@ class TransitionTest {
         page.value = "B"
         assertEquals("A", c.label())
         assertFalse(c.root.children.single().modifier.elements().filterIsInstance<InputEnabled>().single().enabled)
-        c.frame(50)
+        c.frame(40)
         assertEquals(0.5f, c.opacity())
         assertEquals("A", c.label())
-        c.frame(100)
+        c.frame(80)
         assertEquals("B", c.label())
         assertEquals(0f, c.opacity())
-        c.frame(150)
+        c.frame(140)
         assertEquals(0.5f, c.opacity())
         c.frame(200)
         assertEquals(1f, c.opacity())
@@ -42,11 +43,12 @@ class TransitionTest {
         page.value = "D"
         c.frame(140)
         assertEquals("D", c.label())
-        c.frame(240)
+        c.frame(260)
         assertEquals(1f, c.opacity())
         c.close()
     }
 
+    // Hiding takes 40% of the 100 ms entrance.
     @Test fun visibilityRetainsExitContentThenReleasesState() {
         val shown = mutableStateOf(true)
         var initialized = 0
@@ -57,7 +59,7 @@ class TransitionTest {
         }
         c.frame(0)
         shown.value = false
-        c.frame(50)
+        c.frame(20)
         assertEquals("1", c.label())
         assertEquals(0.5f, c.opacity())
         shown.value = true

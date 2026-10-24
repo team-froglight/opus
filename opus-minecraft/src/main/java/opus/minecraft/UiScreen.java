@@ -7,6 +7,7 @@ import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 import opus.core.Compositions;
+import opus.core.Colors;
 import opus.core.Composition;
 import opus.core.ScrollGestures;
 import opus.core.ScrollGestureUpdate;
@@ -156,6 +157,7 @@ public class UiScreen extends Screen {
         }
         // No timer can end a held gesture. Keep its hint visible even when the fingers stop moving.
         updateSwipePreview(now);
+        renderer.update(composition, mouseX, mouseY, scrollY);
         composition.advanceAnimations(now);
         // Lay out FIRST: right after a recompose the tree is fresh (all zeros)
         // and measuring content height before layout collapses maxScroll to 0,
@@ -165,6 +167,7 @@ public class UiScreen extends Screen {
         float maxScroll = Math.max(0, lastContentHeight - height);
         scrollY = Math.min(Math.max(scrollY, 0), maxScroll);
         renderer.draw(composition, graphics, mouseX, mouseY, partialTick, width, height, scrollY);
+        drawScrollbar(graphics, mouseX, mouseY);
         GestureHintRenderer.draw(graphics, gestureHint.sample(System.nanoTime(), reducedMotion), width, height, reducedMotion);
     }
 
@@ -172,6 +175,7 @@ public class UiScreen extends Screen {
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
         scrollGestures.suppressSwipe();
         gestureHint.clear();
+        if (button == 0 && beginScrollbarDrag(mouseX, mouseY)) return true;
         if (renderer != null && composition != null
             && renderer.handleClick(composition, mouseX, mouseY, scrollY, button)) {
             return true;
@@ -200,6 +204,10 @@ public class UiScreen extends Screen {
 
     @Override
     public boolean mouseDragged(double mouseX, double mouseY, int button, double dragX, double dragY) {
+        if (draggingScrollbar) {
+            scrollThumbTo(mouseY - scrollbarGrab);
+            return true;
+        }
         if (renderer != null && composition != null && renderer.handleDrag(composition, mouseX, mouseY, scrollY, dragX, dragY)) {
             return true;
         }
@@ -208,6 +216,7 @@ public class UiScreen extends Screen {
 
     @Override
     public boolean mouseReleased(double mouseX, double mouseY, int button) {
+        draggingScrollbar = false;
         if (renderer != null) renderer.handleRelease();
         return super.mouseReleased(mouseX, mouseY, button);
     }
@@ -240,7 +249,7 @@ public class UiScreen extends Screen {
     }
 
     private boolean canSwipeNavigate() {
-        return onSwipe != null && composition != null && renderer != null
+        return onSwipe != null && composition != null && renderer != null && !draggingScrollbar
             && !renderer.isDraggingControl() && !renderer.blocksSwipeNavigation(composition);
     }
 
@@ -249,6 +258,56 @@ public class UiScreen extends Screen {
         boolean available = isSwipeAvailable(gesture.getSwipe());
         gestureHint.update(gesture.getSwipe(), 1f, true, available, now);
         if (available) onSwipe.accept(gesture.getSwipe());
+    }
+
+    // ---- Scrollbar ----
+
+    private static final int SCROLLBAR_INSET = 8, SCROLLBAR_HIT_WIDTH = 8;
+    private boolean draggingScrollbar;
+    private double scrollbarGrab;
+
+    /** Override to hide the built-in scrollbar, for example when drawing your own. */
+    protected boolean showsScrollbar() { return true; }
+
+    private float maxScroll() { return Math.max(0, lastContentHeight - height); }
+    private float trackHeight() { return Math.max(1, height - SCROLLBAR_INSET * 2); }
+    private float thumbHeight() { return Math.min(trackHeight(), Math.max(20, trackHeight() * height / lastContentHeight)); }
+    private float thumbTop() {
+        float max = maxScroll();
+        return SCROLLBAR_INSET + (max <= 0 ? 0 : (trackHeight() - thumbHeight()) * scrollY / max);
+    }
+    private boolean hasScrollbar() { return showsScrollbar() && maxScroll() > 0; }
+    private boolean overScrollbar(double x, double y) {
+        return hasScrollbar() && x >= width - SCROLLBAR_HIT_WIDTH && y >= SCROLLBAR_INSET && y <= SCROLLBAR_INSET + trackHeight();
+    }
+
+    /** Grabs the thumb where it was pressed; a press on the track first centers the thumb there. */
+    private boolean beginScrollbarDrag(double x, double y) {
+        if (!overScrollbar(x, y)) return false;
+        float top = thumbTop();
+        scrollbarGrab = y >= top && y <= top + thumbHeight() ? y - top : thumbHeight() / 2f;
+        draggingScrollbar = true;
+        scrollThumbTo(y - scrollbarGrab);
+        return true;
+    }
+
+    private void scrollThumbTo(double top) {
+        float travel = trackHeight() - thumbHeight();
+        float fraction = travel <= 0 ? 0 : (float) ((top - SCROLLBAR_INSET) / travel);
+        scrollY = Math.clamp(fraction, 0f, 1f) * maxScroll();
+    }
+
+    /** Colors follow the theme of the screen's outermost content. */
+    private void drawScrollbar(GuiGraphics graphics, int mouseX, int mouseY) {
+        if (!hasScrollbar()) return;
+        var children = composition.getRoot().getChildren();
+        Colors colors = children.isEmpty() ? new Colors() : children.getFirst().getTheme().getColors();
+        boolean active = draggingScrollbar || overScrollbar(mouseX, mouseY);
+        int thumbWidth = active ? 4 : 2;
+        int top = Math.round(thumbTop());
+        graphics.fill(width - 4, SCROLLBAR_INSET, width - 2, SCROLLBAR_INSET + (int) trackHeight(), colors.getSurface());
+        graphics.fill(width - 2 - thumbWidth, top, width - 2, top + Math.round(thumbHeight()),
+            active ? colors.getMuted() : (colors.getMuted() & 0xFFFFFF) | 0x99000000);
     }
 
     @Override

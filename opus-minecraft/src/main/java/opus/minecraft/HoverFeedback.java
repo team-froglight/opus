@@ -1,6 +1,7 @@
 package opus.minecraft;
 
 import opus.core.Easing;
+import opus.core.Motion;
 
 /** Small renderer-owned transition; hovering does not recompose the UI tree. */
 final class HoverFeedback {
@@ -16,7 +17,7 @@ final class HoverFeedback {
             started = now;
             return value;
         }
-        float t = Math.max(0f, Math.min(1f, (now - started) / (120_000_000f * durationScale)));
+        float t = Math.max(0f, Math.min(1f, (now - started) / (Motion.FAST * 1_000_000f * durationScale)));
         value = from + (target - from) * Easing.EASE_OUT.transform(t);
         if (next != target) {
             from = value;

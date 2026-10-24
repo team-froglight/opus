@@ -12,14 +12,15 @@ private class ViewState<T>(var displayed: T) {
 
 /**
  * Fades/slides the current view out, then the latest requested view in.
- * [durationMillis] is the total exit + enter duration. Rapid changes coalesce to the latest target.
- * Hoist state that should survive navigation outside this container.
+ * [durationMillis] is the total exit + enter duration; the exit takes [Motion.EXIT_FRACTION] of it with
+ * the reversed [easing], so the old view leaves quickly and the new one settles.
+ * Rapid changes coalesce to the latest target. Hoist state that should survive navigation outside this container.
  */
 @Composable
 @JvmOverloads
 fun <T> AnimatedContent(target: T, modifier: Modifier = Modifier,
                         transition: ViewTransition = ViewTransition.SLIDE_VERTICAL,
-                        durationMillis: Int = 280, easing: Easing = Easing.EASE_IN_OUT,
+                        durationMillis: Int = Motion.VIEW, easing: Easing = Easing.EASE_OUT,
                         distance: Float = 12f, content: @Composable (T) -> Unit) {
     require(durationMillis >= 0 && distance.isFinite() && distance >= 0f)
     composeGroup("AnimatedContent") { composer ->
@@ -30,8 +31,9 @@ fun <T> AnimatedContent(target: T, modifier: Modifier = Modifier,
             state.generation++
         }
         val leaving = state.displayed != target
-        val duration = if (snap) 0 else if (leaving) durationMillis / 2 else durationMillis - durationMillis / 2
-        val progress = composer.animate(state.progress, if (leaving) 0f else 1f, duration, easing)
+        val exit = Motion.exitDuration(durationMillis)
+        val duration = if (snap) 0 else if (leaving) exit else durationMillis - exit
+        val progress = composer.animate(state.progress, if (leaving) 0f else 1f, duration, if (leaving) easing.reversed() else easing)
         val style = transitionStyle(modifier, progress, transition, distance)
             .inputEnabled(!leaving && progress >= 1f)
         Box(style) {
@@ -40,16 +42,20 @@ fun <T> AnimatedContent(target: T, modifier: Modifier = Modifier,
     }
 }
 
-/** Keeps outgoing content mounted until its exit finishes, then releases its layout space and state. */
+/**
+ * Keeps outgoing content mounted until its exit finishes, then releases its layout space and state.
+ * [durationMillis] is the entrance; hiding takes [Motion.EXIT_FRACTION] of it with the reversed [easing].
+ */
 @Composable
 @JvmOverloads
 fun AnimatedVisibility(visible: Boolean, modifier: Modifier = Modifier,
                        transition: ViewTransition = ViewTransition.SLIDE_VERTICAL,
-                       durationMillis: Int = 220, easing: Easing = Easing.EASE_IN_OUT,
+                       durationMillis: Int = Motion.STANDARD, easing: Easing = Easing.EASE_OUT,
                        distance: Float = 8f, content: @Composable () -> Unit) {
     require(durationMillis >= 0 && distance.isFinite() && distance >= 0f)
     composeGroup("AnimatedVisibility") {
-        val progress = animateFloat(if (visible) 1f else 0f, durationMillis, easing)
+        val progress = if (visible) animateFloat(1f, durationMillis, easing)
+            else animateFloat(0f, Motion.exitDuration(durationMillis), easing.reversed())
         if (visible || progress > 0f) {
             // Same direction on enter/exit preserves position during reversals.
             Box(transitionStyle(modifier, progress, transition, distance)
@@ -77,7 +83,7 @@ private class StyleState {
  */
 @Composable
 @JvmOverloads
-fun Modifier.animateChanges(durationMillis: Int = 220, easing: Easing = Easing.EASE_OUT): Modifier {
+fun Modifier.animateChanges(durationMillis: Int = Motion.STANDARD, easing: Easing = Easing.EASE_OUT): Modifier {
     require(durationMillis >= 0)
     val composer = Composition.currentComposer ?: error("animateChanges outside composition")
     val state = composer.remember { StyleState() }

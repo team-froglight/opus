@@ -10,6 +10,8 @@ import net.minecraft.network.chat.Component;
 import opus.core.*;
 import org.lwjgl.glfw.GLFW;
 
+import java.lang.invoke.MethodHandles;
+import java.lang.invoke.VarHandle;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -19,6 +21,11 @@ final class InputFields {
     private final Map<String, Entry> entries = new HashMap<>();
     private String focused;
     private boolean dragging;
+    /** A held NumberField arrow repeats after a delay, like a native spin button. */
+    private static final long STEP_DELAY_NANOS = 400_000_000L, STEP_REPEAT_NANOS = 50_000_000L;
+    private Entry stepping;
+    private int stepDirection;
+    private long nextStep;
 
     InputFields(Font font) { this.font = font; }
     static boolean isInput(UiNode node) {
@@ -45,6 +52,7 @@ final class InputFields {
         Entry previous = entries.get(focused);
         focused = identity;
         dragging = false;
+        stepping = null;
         entries.forEach((id, entry) -> entry.widget.setFocused(id.equals(identity)));
         if (previous != null && DatePicker.expanded(previous.node)) previous.datePicker.close(previous.node);
     }
@@ -57,7 +65,20 @@ final class InputFields {
 
     boolean hasFocus() { return focused != null && entries.containsKey(focused); }
     boolean isDragging() { return dragging; }
-    void release() { dragging = false; }
+    void release() { dragging = false; stepping = null; }
+
+    /**
+     * Repeats a held NumberField arrow while the pointer stays on it. Runs before layout, because a step
+     * recomposes the tree. At most one step per frame, so a slow frame never bursts.
+     */
+    void repeatHeldStep(long now, double x, double y) {
+        Entry entry = stepping;
+        if (entry == null) return;
+        if (entries.get(entry.node.getIdentity()) != entry || entry.stepped(stepDirection) == null) { stepping = null; return; }
+        if (entry.stepDirectionAt(x, y) != stepDirection || now < nextStep) return;
+        entry.step(stepDirection);
+        nextStep = Math.max(nextStep + STEP_REPEAT_NANOS, now);
+    }
 
     void draw(UiNode node, GuiGraphics g, double mouseX, double mouseY, float scrollY) {
         Entry entry = entries.get(node.getIdentity());
@@ -93,9 +114,12 @@ final class InputFields {
         Entry entry = entries.get(node.getIdentity());
         if (entry == null || !entry.options.getEnabled()) return false;
         focus(node.getIdentity());
-        if (node.getType().equals("NumberField") && x >= entry.x + entry.width - 28
-            && y >= entry.y + InputMetrics.LABEL_HEIGHT && y < entry.y + InputMetrics.LABEL_HEIGHT + entry.fieldHeight) {
-            entry.step(y < entry.y + InputMetrics.LABEL_HEIGHT + entry.fieldHeight / 2f ? 1 : -1);
+        int direction = entry.stepDirectionAt(x, y);
+        if (direction != 0) {
+            entry.step(direction);
+            stepping = entry;
+            stepDirection = direction;
+            nextStep = System.nanoTime() + STEP_DELAY_NANOS;
             return true;
         }
         if (node.getType().equals("DateField") && !entry.options.getReadOnly()) {
@@ -201,6 +225,8 @@ final class InputFields {
                     box.setMaxLength(options.getMaxLength());
                     box.setEditable(!options.getReadOnly());
                     ((Single) box).showCaret = interactive && !options.getReadOnly();
+                    ((Single) box).selectionColor = colors().getSelection();
+                    ((Single) box).caretColor = accent();
                     box.setTextColor(options.getEnabled() ? colors().getOnSurface() : colors().getDisabledContent());
                     box.setTextColorUneditable(colors().getOnSurface());
                     box.setFilter(node.getType().equals("NumberField") ? NumberInput::accepts
@@ -238,6 +264,14 @@ final class InputFields {
                 if (new java.math.BigDecimal(next).compareTo(new java.math.BigDecimal(value())) == 0) return null;
             } catch (NumberFormatException incompleteDraft) { /* The first step completes the draft. */ }
             return next;
+        }
+
+        /** 1 over a NumberField's upper arrow, -1 over its lower arrow, otherwise 0. */
+        int stepDirectionAt(double px, double py) {
+            if (!node.getType().equals("NumberField")) return 0;
+            float top = y + InputMetrics.LABEL_HEIGHT;
+            if (px < x + width - 28 || px > x + width || py < top || py >= top + fieldHeight) return 0;
+            return py < top + fieldHeight / 2f ? 1 : -1;
         }
 
         void step(int direction) {
@@ -301,21 +335,75 @@ final class InputFields {
         }
     }
 
+    /**
+     * EditBox's scroll offset, for painting. Minecraft is an automatic module, so its packages are open;
+     * without access the editor falls back to vanilla painting.
+     */
+    private static final VarHandle DISPLAY_POS = displayPosHandle();
+
+    private static VarHandle displayPosHandle() {
+        try {
+            return MethodHandles.privateLookupIn(EditBox.class, MethodHandles.lookup())
+                .findVarHandle(EditBox.class, "displayPos", int.class);
+        } catch (ReflectiveOperationException | RuntimeException unavailable) {
+            return null;
+        }
+    }
+
     private final class Single extends EditBox {
-        private int anchor;
-        private boolean showCaret = true, paintingWithoutCaret;
+        private int anchor, highlight, textColor, uneditableColor;
+        private boolean showCaret = true, editable = true, paintingWithoutCaret;
+        private int selectionColor, caretColor;
+        private long blinkStart;
+        private int blinkCursor = -1;
+        private String blinkValue = "";
         Single(int width, Component label) {
             super(font, 0, 0, width, 10, label);
             setBordered(false);
             setTextShadow(false);
         }
-        // Native EditBox paints its caret from isFocused(), even when setEditable(false).
-        // Hide focus only during painting: keyboard selection and clipboard focus remain intact.
+        // EditBox's only highlight writes go through this method.
+        @Override public void setHighlightPos(int position) { super.setHighlightPos(position); highlight = Math.clamp(position, 0, getValue().length()); }
+        @Override public void setTextColor(int color) { super.setTextColor(color); textColor = color; }
+        @Override public void setTextColorUneditable(int color) { super.setTextColorUneditable(color); uneditableColor = color; }
+        @Override public void setEditable(boolean value) { super.setEditable(value); editable = value; }
+        // Fallback only: vanilla paints its caret from isFocused(), even when setEditable(false).
         @Override public boolean isFocused() { return !paintingWithoutCaret && super.isFocused(); }
+
+        /**
+         * Vanilla draws the text in two halves split at the cursor and moves the second half back one
+         * pixel to undo the shadow's extra advance. Without a shadow that overlaps the glyph before the
+         * cursor, which shows wherever no caret covers it, such as in read-only fields. Paint the visible
+         * text in one pass instead, with a themed selection behind it and a caret on top.
+         */
         @Override public void renderWidget(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
-            paintingWithoutCaret = !showCaret;
-            try { super.renderWidget(g, mouseX, mouseY, partialTick); }
-            finally { paintingWithoutCaret = false; }
+            if (DISPLAY_POS == null) {
+                paintingWithoutCaret = !showCaret;
+                try { super.renderWidget(g, mouseX, mouseY, partialTick); }
+                finally { paintingWithoutCaret = false; }
+                return;
+            }
+            if (!isVisible()) return;
+            String value = getValue();
+            int start = Math.clamp((int) DISPLAY_POS.get(this), 0, value.length());
+            String visible = font.plainSubstrByWidth(value.substring(start), getInnerWidth());
+            int x = getX(), y = getY();
+            int cursor = getCursorPosition() - start;
+            int lo = Math.clamp(Math.min(cursor, highlight - start), 0, visible.length());
+            int hi = Math.clamp(Math.max(cursor, highlight - start), 0, visible.length());
+            if (lo < hi) g.fill(x + font.width(visible.substring(0, lo)), y - 1, x + font.width(visible.substring(0, hi)), y + 10, selectionColor);
+            g.drawString(font, visible, x, y, editable ? textColor : uneditableColor, false);
+            long now = System.nanoTime();
+            // Restart the blink on every edit or cursor move so the caret stays visible while typing.
+            if (getCursorPosition() != blinkCursor || !value.equals(blinkValue)) {
+                blinkCursor = getCursorPosition(); blinkValue = value; blinkStart = now;
+            }
+            boolean blinkOn = (now - blinkStart) / 300_000_000L % 2 == 0;
+            if (showCaret && super.isFocused() && blinkOn && cursor >= 0 && cursor <= visible.length()) {
+                // Sit in the previous glyph's spacing column rather than on the next glyph.
+                int caretX = cursor == 0 ? x : x + font.width(visible.substring(0, cursor)) - 1;
+                g.fill(caretX, y - 1, caretX + 1, y + 10, caretColor);
+            }
         }
         @Override public void onClick(double x, double y) { super.onClick(x, y); anchor = getCursorPosition(); }
         @Override public boolean mouseDragged(double x, double y, int button, double dx, double dy) {

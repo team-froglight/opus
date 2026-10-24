@@ -74,7 +74,7 @@ fun IconButton(icon: PixelIcon, label: String, onClick: () -> Unit, modifier: Mo
 private fun buttonNode(text: String, onClick: () -> Unit, modifier: Modifier, enabled: Boolean,
                        accent: Int, arrow: ArrowDirection?, icon: PixelIcon? = null) {
     composeGroup("Button") {
-        val color = animateColor(if (enabled) accent else LocalTheme.current.colors.inactive, 160)
+        val color = animateColor(if (enabled) accent else LocalTheme.current.colors.inactive, Motion.FAST)
         emit("Button", modifier.padding(horizontal = 12f, vertical = 6f).clickable(onClick),
             mapOf("text" to text, "enabled" to enabled, "accent" to color, "arrowDirection" to arrow, "icon" to icon))
     }
@@ -114,8 +114,8 @@ fun RadioGroup(
 @JvmOverloads
 fun Switch(checked: Boolean, onCheckedChange: (Boolean) -> Unit, modifier: Modifier = Modifier, accent: Int = LocalTheme.current.colors.accent) {
     composeGroup("Switch") {
-        val position = animateFloat(if (checked) 1f else 0f, 180)
-        val trackColor = animateColor(if (checked) accent else LocalTheme.current.colors.inactive, 180)
+        val position = animateFloat(if (checked) 1f else 0f)
+        val trackColor = animateColor(if (checked) accent else LocalTheme.current.colors.inactive)
         emit("Switch", modifier, mapOf("checked" to checked, "accent" to accent, "position" to position, "trackColor" to trackColor,
             "events" to ControlEvents(checkedChange = Consumer { onCheckedChange(it) })))
     }
@@ -202,7 +202,8 @@ fun Dropdown(
     composeGroup("Dropdown") { composer ->
         val open = composer.remember { mutableStateOf(false) }
         val expanded = open.value && enabled && options.isNotEmpty()
-        val progress = animateFloat(if (expanded) 1f else 0f, 180, Easing.EASE_OUT)
+        // Menus open with the standard entrance and close quickly, accelerating away.
+        val progress = if (expanded) animateFloat(1f) else animateFloat(0f, Motion.exitDuration(Motion.STANDARD), Easing.EASE_IN)
         emit("Dropdown", modifier, mapOf(
             "options" to snapshot(options), "selectedIndex" to selectedIndex, "placeholder" to placeholder,
             "enabled" to enabled, "accent" to accent, "expanded" to expanded, "expansion" to progress,

@@ -69,7 +69,7 @@ public class UiRenderer implements AutoCloseable {
     private int layoutVersion = -1;
     private float layoutWidth, layoutHeight;
     private TooltipAnchor pendingTooltip;
-    private record TooltipAnchor(String text, float top, float bottom, Colors colors) {}
+    private record TooltipAnchor(String text, Colors colors) {}
 
     /** Floating content owned by a node, in content coordinates. Later overlays are on top. */
     private record Overlay(UiNode owner, float x, float y, float width, float height) {
@@ -162,8 +162,18 @@ public class UiRenderer implements AutoCloseable {
         return bottom;
     }
 
+    /**
+     * Per-frame input work that may change state, such as a held NumberField arrow. Call once per frame
+     * before {@link #layout}, so the frame lays out and draws the resulting composition.
+     */
+    public void update(Composition composition, double mouseX, double mouseY, float scrollY) {
+        ensureLayout(composition);
+        inputs.repeatHeldStep(System.nanoTime(), mouseX, mouseY + scrollY);
+    }
+
     public void render(Composition composition, GuiGraphics g, int mouseX, int mouseY,
                        float partialTick, float viewW, float viewH, float scrollY) {
+        update(composition, mouseX, mouseY, scrollY);
         layout(composition, viewW, Math.max(viewH, composition.getRoot().getHeight()));
         draw(composition, g, mouseX, mouseY, partialTick, viewW, viewH, scrollY);
     }
@@ -191,7 +201,7 @@ public class UiRenderer implements AutoCloseable {
             g.pose().popPose();
             g.disableScissor();
         }
-        if (pendingTooltip != null) drawTooltip(g, mouseX, scrollY, viewW, viewH);
+        if (pendingTooltip != null) drawTooltip(g, mouseX, mouseY, viewW, viewH);
     }
 
     private void drawChildren(UiNode parent, GuiGraphics g, float scrollY, float viewW, float viewH) {
@@ -282,28 +292,49 @@ public class UiRenderer implements AutoCloseable {
         }
 
         drawContent(node, g, x, y, w, h, radius, padding, scrollY);
-        if (hasKeyboardFocus(node) && !InputFields.isInput(node)) {
-            float focusY = y, focusH = h;
-            switch (node.getType()) {
-                case "RadioGroup", "MultiSelect" -> {
-                    focusY += keyboard.option() * ControlMetrics.OPTION_ROW_HEIGHT;
-                    focusH = ControlMetrics.OPTION_ROW_HEIGHT - 2;
-                }
-                case "Accordion" -> focusH = ControlMetrics.ACCORDION_HEADER_HEIGHT;
-                // An open menu highlights its keyboard row instead.
-                case "Dropdown" -> focusH = DropdownMetrics.HEADER_HEIGHT;
-                default -> { }
-            }
-            ShapeRenderer.outline(g, x, focusY, w, focusH, 4, 1.2f, 2, colors(node).getFocus(), null);
-        }
+        if (hasKeyboardFocus(node) && !InputFields.isInput(node)) drawFocusRing(node, g, x, y, w, h, radius);
         if (node.getType().equals("Accordion") && !bool(node, "expanded", false)) return;
         drawChildren(node, g, scrollY, viewW, viewH);
         if (node.getType().equals("Tooltip")) {
             String tip = str(node, "tip", "");
             if (bounds.getInputEnabled() && !tip.isEmpty() && isHovered(x, y, w, h)) {
-                pendingTooltip = new TooltipAnchor(tip, y, y + h, colors(node));
+                pendingTooltip = new TooltipAnchor(tip, colors(node));
             }
         }
+    }
+
+    /**
+     * An inset ring around what the focused control paints, never its whole layout box. Full-width
+     * rows would otherwise get a ring far wider than their content, and an outset ring is clipped
+     * by whatever encloses the control.
+     */
+    private void drawFocusRing(UiNode node, GuiGraphics g, float x, float y, float w, float h, float radius) {
+        float rx = x, ry = y, rw = w, rh = h, r = radius > 0 ? radius : 4;
+        switch (node.getType()) {
+            case "RadioGroup", "MultiSelect" -> {
+                List<String> options = node.getOptions();
+                int option = Math.clamp(keyboard.option(), 0, Math.max(0, options.size() - 1));
+                String label = options.isEmpty() ? "" : options.get(option);
+                rx = x - 3; ry = y + option * ControlMetrics.OPTION_ROW_HEIGHT - 2;
+                rw = Math.min(w + 3, labelledControlWidth(label)); rh = ControlMetrics.OPTION_ROW_HEIGHT; r = 5;
+            }
+            case "Checkbox", "RadioButton" -> {
+                rx = x - 3; ry = y - 2;
+                rw = Math.min(w + 3, labelledControlWidth(str(node, "label", null))); rh = ControlMetrics.OPTION_ROW_HEIGHT; r = 5;
+            }
+            case "Accordion" -> {
+                rw = Math.min(w, 16 + font.width(str(node, "title", "")) + 8); rh = ControlMetrics.ACCORDION_HEADER_HEIGHT; r = 5;
+            }
+            // An open menu highlights its keyboard row instead.
+            case "Dropdown" -> { rh = DropdownMetrics.HEADER_HEIGHT; r = 6; }
+            default -> { }
+        }
+        ShapeRenderer.border(g, rx, ry, rw, rh, Math.min(r, rh / 2f), 1.5f, colors(node).getFocus(), null, null);
+    }
+
+    /** A 14px box, its 4px gap and label, with padding for the ring on both sides. */
+    private float labelledControlWidth(String label) {
+        return label == null || label.isEmpty() ? 20 : 3 + 18 + font.width(label) + 5;
     }
 
     private boolean hasKeyboardFocus(UiNode node) {
@@ -314,14 +345,16 @@ public class UiRenderer implements AutoCloseable {
         return hoverContentX >= x && hoverContentX <= x + w && hoverContentY >= y && hoverContentY <= y + h;
     }
 
-    private void drawTooltip(GuiGraphics g, int mouseX, float scrollY, float viewW, float viewH) {
+    /** Floats beside the pointer, flipping to its other side near the screen edges. */
+    private void drawTooltip(GuiGraphics g, int mouseX, int mouseY, float viewW, float viewH) {
         Colors colors = pendingTooltip.colors();
         var lines = font.split(Component.literal(pendingTooltip.text()), Math.max(1, (int) viewW - 28));
         int width = lines.stream().mapToInt(font::width).max().orElse(0) + 12;
         int height = lines.size() * font.lineHeight + 12;
-        float x = Math.max(4, Math.min(mouseX + 10, viewW - width - 4));
-        float y = pendingTooltip.top() - scrollY - height - 6;
-        if (y < 4) y = pendingTooltip.bottom() - scrollY + 6;
+        float x = mouseX + 10, y = mouseY + 12;
+        if (x + width > viewW - 4) x = mouseX - width - 6;
+        if (y + height > viewH - 4) y = mouseY - height - 6;
+        x = Math.max(4, Math.min(x, viewW - width - 4));
         y = Math.max(4, Math.min(y, viewH - height - 4));
         g.pose().pushPose();
         g.pose().translate(0, 0, 400);
@@ -553,8 +586,9 @@ public class UiRenderer implements AutoCloseable {
             }
             case "Accordion" -> {
                 PixelIconRenderer.draw(g, bool(node, "expanded", false) ? PixelIcon.CHEVRON_DOWN : PixelIcon.CHEVRON_RIGHT,
-                    x + 5, y + 7, colors.getOnSurface());
-                g.drawString(font, str(node, "title", ""), (int) x + 16, (int) y + 2, colors.getOnSurface(), false);
+                    x + 8, y + ControlMetrics.ACCORDION_HEADER_HEIGHT / 2f, colors.getOnSurface());
+                // Glyphs are 8 units tall, so this centers the title in the header like the chevron.
+                g.drawString(font, str(node, "title", ""), (int) x + 16, (int) (y + (ControlMetrics.ACCORDION_HEADER_HEIGHT - 8) / 2), colors.getOnSurface(), false);
             }
             case "Dropdown" -> {
                 // The header only; the open menu is painted in the overlay layer.

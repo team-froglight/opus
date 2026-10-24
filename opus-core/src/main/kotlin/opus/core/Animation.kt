@@ -4,18 +4,42 @@ package opus.core
 
 import kotlin.math.roundToInt
 
-/** Timing curves for transitions. Progress and endpoints are always clamped. */
+/**
+ * Timing curves for transitions. Progress and endpoints are always clamped.
+ * Entrances decelerate ([EASE_OUT]); exits accelerate ([EASE_IN]) so they never linger nearly invisible.
+ */
 enum class Easing {
-    LINEAR, EASE_OUT, EASE_IN_OUT;
+    LINEAR, EASE_IN, EASE_OUT, EASE_IN_OUT;
 
     fun transform(progress: Float): Float {
         val t = progress.coerceIn(0f, 1f)
         return when (this) {
             LINEAR -> t
+            EASE_IN -> t * t * t
             EASE_OUT -> 1f - (1f - t) * (1f - t) * (1f - t)
             EASE_IN_OUT -> t * t * (3f - 2f * t)
         }
     }
+
+    /** The curve for the reverse motion: an entrance's [EASE_OUT] exits with [EASE_IN]. */
+    fun reversed(): Easing = when (this) {
+        EASE_IN -> EASE_OUT
+        EASE_OUT -> EASE_IN
+        else -> this
+    }
+}
+
+/** Shared durations in milliseconds. Exits take [EXIT_FRACTION] of the matching entrance. */
+object Motion {
+    /** Hover, press and enabled-state feedback. */
+    const val FAST = 120
+    /** Toggles, value changes, menus and style morphs. */
+    const val STANDARD = 160
+    /** Whole views changing. */
+    const val VIEW = 220
+    const val EXIT_FRACTION = 0.4f
+
+    @JvmStatic fun exitDuration(durationMillis: Int): Int = (durationMillis * EXIT_FRACTION).toInt()
 }
 
 /**
@@ -25,7 +49,7 @@ enum class Easing {
  */
 @Composable
 @JvmOverloads
-fun animateFloat(target: Float, durationMillis: Int = 220, easing: Easing = Easing.EASE_OUT): Float {
+fun animateFloat(target: Float, durationMillis: Int = Motion.STANDARD, easing: Easing = Easing.EASE_OUT): Float {
     require(target.isFinite()) { "Animation target must be finite" }
     return animationValue(target, durationMillis, easing) { from, to, t ->
         (from.toDouble() * (1.0 - t) + to.toDouble() * t).toFloat()
@@ -35,7 +59,7 @@ fun animateFloat(target: Float, durationMillis: Int = 220, easing: Easing = Easi
 /** Interpolates ARGB colors with premultiplied alpha, avoiding dark edges when fading. */
 @Composable
 @JvmOverloads
-fun animateColor(target: Int, durationMillis: Int = 220, easing: Easing = Easing.EASE_OUT): Int =
+fun animateColor(target: Int, durationMillis: Int = Motion.STANDARD, easing: Easing = Easing.EASE_OUT): Int =
     animationValue(target, durationMillis, easing, ::interpolateColor)
 
 private fun <T> animationValue(target: T, durationMillis: Int, easing: Easing,

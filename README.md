@@ -174,13 +174,13 @@ Use `animateFloat` for position, size, corner radius or progress, and `animateCo
 
 ```kotlin
 var expanded by remember { mutableStateOf(false) }
-val size = animateFloat(if (expanded) 64f else 32f, 350, Easing.EASE_IN_OUT)
+val size = animateFloat(if (expanded) 64f else 32f, Motion.VIEW, Easing.EASE_OUT)
 val color = animateColor(if (expanded) 0xFFC59AE8.toInt() else 0xFF5DD2BD.toInt())
 Box(Modifier.size(size, size).background(color, 8f)) {}
 Button("Animate", onClick = { expanded = !expanded })
 ```
 
-Java uses `Ui.animateFloat(target, durationMillis, Easing.EASE_IN_OUT)` and `Ui.animateColor(target)`. Both have defaults of 220 ms and `EASE_OUT`; `LINEAR` is also available. The first composition displays the target immediately. Later target changes animate from the displayed value, including reversals during a transition. Duration and easing are selected when a new target arrives; duration zero snaps immediately. Keep animation calls in stable composition slots, just like `remember`.
+Java uses `Ui.animateFloat(target, durationMillis, Easing.EASE_OUT)` and `Ui.animateColor(target)`. Both default to `Motion.STANDARD` (160 ms) and `EASE_OUT`. `Motion.FAST` (120 ms) suits hover and press feedback and `Motion.VIEW` (220 ms) whole views. Entrances should decelerate with `EASE_OUT` and exits accelerate with `EASE_IN`, so nothing lingers nearly invisible; `LINEAR` and `EASE_IN_OUT` are also available. The first composition displays the target immediately. Later target changes animate from the displayed value, including reversals during a transition. Duration and easing are selected when a new target arrives; duration zero snaps immediately. Keep animation calls in stable composition slots, just like `remember`.
 
 `UiScreen` advances animations before layout on each rendered frame. Switches animate automatically; the gallery's **Styling → Motion studio** demonstrates movement, size, shape, color and progress. `screen.setReducedMotion(true)` snaps active and future transitions to their targets. The gallery exposes this option as **Reduce motion**.
 
@@ -200,9 +200,9 @@ AnimatedVisibility(showDetails) {
 }
 ```
 
-`AnimatedContent` fades the outgoing view out before bringing the latest requested view in. Choose `FADE`, `SLIDE_HORIZONTAL`, or `SLIDE_VERTICAL`; slides include a fade. The default total duration is 280 ms. Rapid navigation coalesces to the latest target, and changing your mind during a transition reverses from the displayed position. Content starts at full visibility on initial composition. Hoist state above the container when it should survive navigation; remembered values inside a removed view are released.
+`AnimatedContent` fades the outgoing view out before bringing the latest requested view in. Choose `FADE`, `SLIDE_HORIZONTAL`, or `SLIDE_VERTICAL`; slides include a fade. The default total duration is `Motion.VIEW` (220 ms): the old view leaves in the first 40% with the reversed easing, and the new one settles in the rest. Rapid navigation coalesces to the latest target, and changing your mind during a transition reverses from the displayed position. Content starts at full visibility on initial composition. Hoist state above the container when it should survive navigation; remembered values inside a removed view are released.
 
-`AnimatedVisibility` keeps content composed during its 220 ms exit, then releases its layout space and remembered state. It reserves the content's normal layout size during the fade; it does not automatically animate intrinsic height. Always call it, including when `visible` is false. Outgoing and partially entered content cannot receive input. Both APIs respect reduced motion.
+`AnimatedVisibility` keeps content composed during its exit, which takes 40% of the 160 ms entrance, then releases its layout space and remembered state. It reserves the content's normal layout size during the fade; it does not automatically animate intrinsic height. Always call it, including when `visible` is false. Outgoing and partially entered content cannot receive input. Both APIs respect reduced motion.
 
 Java equivalents are `Ui.animatedContent(page, value -> renderPage(value))` and `Ui.animatedVisibility(showDetails, () -> renderDetails())`, with overloads for modifier, transition and duration.
 
@@ -221,7 +221,7 @@ Box(
 
 Offsets and opacity apply to descendants; hit testing uses those same coordinates. Buttons animate accent/disabled colors and hover feedback automatically. The gallery's **Styling → Transitions** demonstrates view changes, visibility and style transitions; the main gallery tabs also transition.
 
-`Dropdown(options, selectedIndex, onSelect, modifier, placeholder, enabled, accent)` keeps the selection controlled and manages its own open state. Its menu floats over the following content instead of moving it, and reveals over 180 ms. The placeholder shows while `selectedIndex` is `-1`. Options become selectable after opening finishes, and closing rows cannot receive clicks. Clicking outside or pressing Escape or Tab closes the menu; the dismissing click is consumed. The selected row uses the theme selection color; the pointer or keyboard row uses the highlight color. Content height includes an open menu, so a dropdown near the bottom can be scrolled into view. Reduced motion makes opening and closing immediate.
+`Dropdown(options, selectedIndex, onSelect, modifier, placeholder, enabled, accent)` keeps the selection controlled and manages its own open state. Its menu floats over the following content instead of moving it, opens over 160 ms and closes in 64 ms. The placeholder shows while `selectedIndex` is `-1`. Options become selectable after opening finishes, and closing rows cannot receive clicks. Clicking outside or pressing Escape or Tab closes the menu; the dismissing click is consumed. The selected row uses the theme selection color; the pointer or keyboard row uses the highlight color. Content height includes an open menu, so a dropdown near the bottom can be scrolled into view. Reduced motion makes opening and closing immediate.
 
 `Popup(onDismiss)` content stays in the layout. An outside click or Escape calls `onDismiss`; remove the popup from the composition to close it.
 
@@ -353,3 +353,12 @@ Use these to keep page controls in the application's language. Existing Java ove
 available; Kotlin consumers should rebuild when updating the library.
 
 This is a source-breaking pre-release cleanup. Update imports and rebuild consumers; old binary names are not retained. See [MIGRATION.md](MIGRATION.md).
+
+## Screen chrome
+
+`UiScreen` draws a scrollbar whenever content is taller than the screen. Drag its thumb, or press the
+track to jump there and keep dragging; it widens while hovered or dragged and takes its colors from the
+outermost content's theme. Override `showsScrollbar()` to draw your own. Tooltips float beside the
+pointer and flip to its other side near the screen edges. Keyboard focus rings sit inside the control
+and hug what it paints, so full-width rows and headers never get a ring wider than their content.
+Holding a `NumberField` arrow repeats the step after 400 ms, every 50 ms, while the pointer stays on it.

@@ -14,6 +14,7 @@ import opus.core.States;
 import opus.core.TextRole;
 import opus.core.Ui;
 import opus.core.Easing;
+import opus.core.Motion;
 import opus.core.ViewTransition;
 import opus.core.SwipeDirection;
 import opus.core.InputOptions;
@@ -105,7 +106,7 @@ public final class Gallery {
                     case STYLING -> styling();
                     case LAYOUT -> layout();
                 }
-            }, fullWidth(), ViewTransition.SLIDE_HORIZONTAL, 220);
+            }, fullWidth(), ViewTransition.SLIDE_HORIZONTAL);
             gap(14f);
             text("Scroll to explore  /  Esc to close", TextRole.LABEL, MUTED);
             gap(6f);
@@ -353,7 +354,7 @@ public final class Gallery {
                     gap(6f);
                     text(page == 0 ? "Switch views to try the transition." : "Fade out, swap views, slide in.", TextRole.LABEL, MUTED);
                 }));
-            }, Modifiers.height(fullWidth(), 62f), ViewTransition.SLIDE_HORIZONTAL, 420);
+            }, Modifiers.height(fullWidth(), 62f), ViewTransition.SLIDE_HORIZONTAL);
             gap(10f);
             button(TRANSITION_VISIBLE.getValue() ? "Hide message" : "Show message",
                 () -> TRANSITION_VISIBLE.setValue(!TRANSITION_VISIBLE.getValue()));
@@ -367,7 +368,7 @@ public final class Gallery {
             Modifier style = Modifiers.size(Modifier.EMPTY, expanded ? 180f : 100f, expanded ? 60f : 40f);
             style = Modifiers.padding(Modifiers.background(style,
                 expanded ? 0xFF704A91 : theme().primary(), expanded ? 18f : 5f), expanded ? 14f : 8f);
-            Layouts.Box(Ui.transition(style, 400, Easing.EASE_IN_OUT), block(() ->
+            Layouts.Box(Ui.transition(style, Motion.VIEW, Easing.EASE_OUT), block(() ->
                 text("Restyle me", TextRole.LABEL, FOREGROUND)));
             gap(10f);
             button("Change style", () -> STYLE_EXPANDED.setValue(!STYLE_EXPANDED.getValue()));
@@ -377,11 +378,11 @@ public final class Gallery {
     private static void motion() {
         panel("Motion studio", "Move, reshape and blend colors together.", () -> {
             boolean expanded = MOTION_EXPANDED.getValue();
-            float position = Ui.animateFloat(expanded ? 100f : 0f, 650, Easing.EASE_IN_OUT);
-            float size = Ui.animateFloat(expanded ? 48f : 32f, 650, Easing.EASE_IN_OUT);
-            float radius = Ui.animateFloat(expanded ? 24f : 6f, 650, Easing.EASE_IN_OUT);
-            int color = Ui.animateColor(expanded ? 0xFFC59AE8 : theme().accent(), 650, Easing.EASE_IN_OUT);
-            float progress = Ui.animateFloat(expanded ? 1f : 0f, 650, Easing.EASE_IN_OUT);
+            float position = Ui.animateFloat(expanded ? 100f : 0f, 280, Easing.EASE_OUT);
+            float size = Ui.animateFloat(expanded ? 48f : 32f, 280, Easing.EASE_OUT);
+            float radius = Ui.animateFloat(expanded ? 24f : 6f, 280, Easing.EASE_OUT);
+            int color = Ui.animateColor(expanded ? 0xFFC59AE8 : theme().accent(), 280, Easing.EASE_OUT);
+            float progress = Ui.animateFloat(expanded ? 1f : 0f, 280, Easing.EASE_OUT);
             Layouts.Box(Modifiers.padding(Modifiers.height(
                 Modifiers.background(fullWidth(), BACKGROUND, 6f), 76f), 12f), block(() ->
                 Layouts.Box(Modifiers.background(Modifiers.offset(

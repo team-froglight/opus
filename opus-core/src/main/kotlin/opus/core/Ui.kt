@@ -27,24 +27,24 @@ object Ui {
         NumberField(value, { onChange.accept(it) }, label, modifier, options, onSubmit?.let { { it.run() } }, numbers)
     @JvmStatic @JvmOverloads
     fun <T> animatedContent(target: T, content: Consumer<T>, modifier: Modifier = Modifier,
-                           transition: ViewTransition = ViewTransition.SLIDE_VERTICAL, durationMillis: Int = 280) =
+                           transition: ViewTransition = ViewTransition.SLIDE_VERTICAL, durationMillis: Int = Motion.VIEW) =
         AnimatedContent(target, modifier, transition, durationMillis) { content.accept(it) }
     @JvmStatic @JvmOverloads
     fun animatedVisibility(visible: Boolean, content: Runnable, modifier: Modifier = Modifier,
-                           transition: ViewTransition = ViewTransition.SLIDE_VERTICAL, durationMillis: Int = 220) =
+                           transition: ViewTransition = ViewTransition.SLIDE_VERTICAL, durationMillis: Int = Motion.STANDARD) =
         AnimatedVisibility(visible, modifier, transition, durationMillis) { content.run() }
     @JvmStatic @JvmOverloads
-    fun transition(modifier: Modifier, durationMillis: Int = 220, easing: Easing = Easing.EASE_OUT): Modifier =
+    fun transition(modifier: Modifier, durationMillis: Int = Motion.STANDARD, easing: Easing = Easing.EASE_OUT): Modifier =
         modifier.animateChanges(durationMillis, easing)
     @JvmStatic fun compose(content: Runnable): Composition = setContent { content.run() }
     @JvmStatic fun clickable(modifier: Modifier, onClick: Runnable): Modifier = modifier.clickable { onClick.run() }
     @JvmStatic fun <T> state(initial: T): MutableState<T> = mutableStateOf(initial)
     @JvmStatic fun <T> remember(factory: Supplier<T>): T = opus.core.remember { factory.get() }
     @JvmStatic @JvmOverloads
-    fun animateFloat(target: Float, durationMillis: Int = 220, easing: Easing = Easing.EASE_OUT): Float =
+    fun animateFloat(target: Float, durationMillis: Int = Motion.STANDARD, easing: Easing = Easing.EASE_OUT): Float =
         opus.core.animateFloat(target, durationMillis, easing)
     @JvmStatic @JvmOverloads
-    fun animateColor(target: Int, durationMillis: Int = 220, easing: Easing = Easing.EASE_OUT): Int =
+    fun animateColor(target: Int, durationMillis: Int = Motion.STANDARD, easing: Easing = Easing.EASE_OUT): Int =
         opus.core.animateColor(target, durationMillis, easing)
 
     @JvmStatic @JvmOverloads

@@ -33,6 +33,13 @@ class TextInputsTest {
         assertEquals(0, InputMetrics.TEXT_OFFSET_Y)
         assertEquals(10, InputMetrics.TEXT_TOP)
         assertEquals(0.5f, InputMetrics.TEXT_NUDGE)
+        // Dense fields and blank labels shrink the input; text stays centered on the cap band.
+        assertEquals(20f, InputMetrics.fieldHeight(1, true))
+        assertEquals(43f, InputMetrics.fieldHeight(3, true))
+        assertEquals(0f, InputMetrics.labelHeight(""))
+        assertEquals(20f, InputMetrics.height(1, InputOptions.DEFAULT.withDense(true), false))
+        assertEquals(14f, InputMetrics.textTop(28f) + InputMetrics.textNudge(28f) + InputMetrics.CAP_HEIGHT / 2f)
+        assertEquals(10f, InputMetrics.textTop(20f) + InputMetrics.textNudge(20f) + InputMetrics.CAP_HEIGHT / 2f)
         assertEquals(14.5f, InputMetrics.labelTop(10f, 9f) + InputMetrics.CAP_HEIGHT / 2f)
         assertEquals(15f, InputMetrics.labelTop(0f, 30f) + InputMetrics.CAP_HEIGHT / 2f)
         assertEquals(42f, InputMetrics.height(1, InputOptions.DEFAULT))

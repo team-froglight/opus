@@ -7,7 +7,8 @@ import java.util.function.Consumer
 
 /**
  * Shared input presentation and constraints. Labels remain visible when a value is entered.
- * A null [accent] follows the theme of the scope the field is composed in.
+ * A null [accent] follows the theme of the scope the field is composed in. A [dense] single-line field is
+ * 20 units tall instead of 28, for toolbars and pickers; a blank label drops the label row entirely.
  */
 data class InputOptions @JvmOverloads constructor(
     val placeholder: String = "",
@@ -16,7 +17,8 @@ data class InputOptions @JvmOverloads constructor(
     val enabled: Boolean = true,
     val readOnly: Boolean = false,
     val maxLength: Int = 1024,
-    val accent: Int? = null
+    val accent: Int? = null,
+    val dense: Boolean = false
 ) {
     init { require(maxLength >= 0) { "maxLength must be nonnegative" } }
     fun withPlaceholder(value: String) = copy(placeholder = value)
@@ -26,6 +28,7 @@ data class InputOptions @JvmOverloads constructor(
     fun withReadOnly(value: Boolean) = copy(readOnly = value)
     fun withMaxLength(value: Int) = copy(maxLength = value)
     fun withAccent(value: Int?) = copy(accent = value)
+    fun withDense(value: Boolean) = copy(dense = value)
     /** Hints are idle-state guidance, never painted underneath the active caret. */
     fun showsPlaceholder(value: String, focused: Boolean) = value.isEmpty() && placeholder.isNotEmpty() && !focused
     companion object { @JvmField val DEFAULT = InputOptions() }
@@ -148,8 +151,17 @@ object InputMetrics {
         CONTENT_INSET + if (hasLeadingIcon) PixelIcon.SIZE + ICON_GAP else 0
     @JvmStatic fun textWidth(width: Int, hasLeadingIcon: Boolean, hasTrailingControl: Boolean): Int =
         (width - textInset(hasLeadingIcon) - CONTENT_INSET - if (hasTrailingControl) 24 else 0).coerceAtLeast(8)
-    @JvmStatic fun fieldHeight(rows: Int): Float = if (rows <= 1) FIELD_HEIGHT else rows * 9f + 16f
-    @JvmStatic fun height(rows: Int, options: InputOptions): Float = LABEL_HEIGHT + fieldHeight(rows) +
+    const val DENSE_FIELD_HEIGHT = 20f
+    @JvmStatic @JvmOverloads fun fieldHeight(rows: Int, dense: Boolean = false): Float =
+        if (rows > 1) rows * 9f + 16f else if (dense) DENSE_FIELD_HEIGHT else FIELD_HEIGHT
+    /** The label row above a field, or nothing when the label is blank. */
+    @JvmStatic fun labelHeight(label: String?): Float = if (label.isNullOrBlank()) 0f else LABEL_HEIGHT
+    /** Whole-unit top of a single-line editor's text in a field of [fieldHeight]; see [textNudge]. */
+    @JvmStatic fun textTop(fieldHeight: Float): Int = ((fieldHeight - CAP_HEIGHT) / 2f).toInt() + TEXT_OFFSET_Y
+    /** The half unit an editor paints below [textTop] so its cap band is exactly centered. */
+    @JvmStatic fun textNudge(fieldHeight: Float): Float = (fieldHeight - CAP_HEIGHT) / 2f - textTop(fieldHeight)
+    @JvmStatic @JvmOverloads fun height(rows: Int, options: InputOptions, hasLabel: Boolean = true): Float =
+        (if (hasLabel) LABEL_HEIGHT else 0f) + fieldHeight(rows, options.dense) +
         if (options.helperText.isNotEmpty() || options.error != null) 14f else 0f
 }
 

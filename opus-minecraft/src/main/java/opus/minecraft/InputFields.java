@@ -95,7 +95,9 @@ final class InputFields {
     /** Top edge of a DateField's floating calendar: just below the field, over its supporting text. */
     static float pickerTop(UiNode node, float y) {
         int rows = ((Number) node.getProps().get("rows")).intValue();
-        return y + InputMetrics.LABEL_HEIGHT + InputMetrics.fieldHeight(rows) + DateInput.CALENDAR_GAP;
+        boolean dense = ((InputOptions) node.getProps().get("inputOptions")).getDense();
+        return y + InputMetrics.labelHeight((String) node.getProps().get("label")) + InputMetrics.fieldHeight(rows, dense)
+            + DateInput.CALENDAR_GAP;
     }
 
     void drawPicker(UiNode node, GuiGraphics g, float x, float y, float width) {
@@ -123,7 +125,7 @@ final class InputFields {
             return true;
         }
         if (node.getType().equals("DateField") && !entry.options.getReadOnly()) {
-            if (x >= entry.x + entry.width - 28 && y >= entry.y + InputMetrics.LABEL_HEIGHT && y <= entry.y + InputMetrics.LABEL_HEIGHT + entry.fieldHeight) {
+            if (x >= entry.x + entry.width - 28 && y >= entry.y + entry.labelHeight && y <= entry.y + entry.labelHeight + entry.fieldHeight) {
                 if (DatePicker.expanded(node)) entry.datePicker.close(node); else entry.datePicker.open(node);
                 return true;
             }
@@ -195,14 +197,15 @@ final class InputFields {
         String lastValue = "";
         final EditHistory history = new EditHistory();
         final DatePicker datePicker = new DatePicker();
-        int x, y, width, fieldHeight;
+        int x, y, width, fieldHeight, labelHeight;
 
         void sync(UiNode next, VisualBounds bounds) {
             node = next;
             options = (InputOptions) node.getProps().get("inputOptions");
             interactive = bounds.getInputEnabled() && options.getEnabled();
             x = (int) bounds.getX(); y = (int) bounds.getY(); width = Math.max(24, (int) node.getWidth());
-            fieldHeight = (int) InputMetrics.fieldHeight(((Number) node.getProps().get("rows")).intValue());
+            fieldHeight = (int) InputMetrics.fieldHeight(((Number) node.getProps().get("rows")).intValue(), options.getDense());
+            labelHeight = (int) InputMetrics.labelHeight((String) node.getProps().get("label"));
             boolean multiline = node.getType().equals("TextArea");
             boolean leadingIcon = node.getProps().get("leadingIcon") instanceof PixelIcon;
             int innerWidth = InputMetrics.textWidth(width, leadingIcon,
@@ -215,7 +218,8 @@ final class InputFields {
                 widget.setFocused(node.getIdentity().equals(focused));
             }
             widget.setX(x + (multiline ? 4 : InputMetrics.textInset(leadingIcon)));
-            widget.setY(y + (int) InputMetrics.LABEL_HEIGHT + (multiline ? 4 : InputMetrics.TEXT_TOP));
+            widget.setY(y + labelHeight + (multiline ? 4 : InputMetrics.textTop(fieldHeight)));
+            if (widget instanceof Single single) single.nudge = InputMetrics.textNudge(fieldHeight);
             widget.setWidth(innerWidth);
             widget.setHeight(multiline ? fieldHeight - 8 : 10);
             widget.active = interactive;
@@ -269,7 +273,7 @@ final class InputFields {
         /** 1 over a NumberField's upper arrow, -1 over its lower arrow, otherwise 0. */
         int stepDirectionAt(double px, double py) {
             if (!node.getType().equals("NumberField")) return 0;
-            float top = y + InputMetrics.LABEL_HEIGHT;
+            float top = y + labelHeight;
             if (px < x + width - 28 || px > x + width || py < top || py >= top + fieldHeight) return 0;
             return py < top + fieldHeight / 2f ? 1 : -1;
         }
@@ -292,14 +296,14 @@ final class InputFields {
 
         void draw(GuiGraphics g, double mouseX, double mouseY, float scrollY) {
             int drawY = (int) (y - scrollY);
-            int boxY = drawY + (int) InputMetrics.LABEL_HEIGHT;
+            int boxY = drawY + labelHeight;
             Colors colors = colors();
             int accent = accent();
             boolean hovered = interactive && mouseX >= x && mouseX <= x + width && mouseY >= boxY && mouseY <= boxY + fieldHeight;
             int border = options.getError() != null ? colors.getError() : widget.isFocused() ? accent : hovered ? colors.getMuted() : colors.getOutline();
             ShapeRenderer.border(g, x, boxY, width, fieldHeight, node.getTheme().getShapes().getCornerRadius(), widget.isFocused() ? 1.5f : 1f,
                 border, options.getEnabled() ? colors.getSurface() : colors.getOverlay(), null);
-            g.drawString(font, font.plainSubstrByWidth((String) node.getProps().get("label"), width), x, drawY,
+            if (labelHeight > 0) g.drawString(font, font.plainSubstrByWidth((String) node.getProps().get("label"), width), x, drawY,
                 options.getEnabled() ? colors.getOnSurface() : colors.getDisabledContent(), false);
             // Scissor respects both the field and the enclosing scrolled screen.
             g.enableScissor(x + 3, boxY + 3, x + width - 3, boxY + fieldHeight - 3);
@@ -308,7 +312,7 @@ final class InputFields {
                     if (widget instanceof Area) g.drawWordWrap(font, Component.literal(options.getPlaceholder()), x + 8, boxY + 8, width - 24, colors.getMuted());
                     else {
                         g.pose().pushPose();
-                        g.pose().translate(0, InputMetrics.TEXT_NUDGE, 0);
+                        g.pose().translate(0, InputMetrics.textNudge(fieldHeight), 0);
                         g.drawString(font, font.plainSubstrByWidth(options.getPlaceholder(), widget.getWidth()),
                             widget.getX(), widget.getY(), colors.getMuted(), false);
                         g.pose().popPose();
@@ -357,6 +361,7 @@ final class InputFields {
 
     private final class Single extends EditBox {
         private int anchor, highlight, textColor, uneditableColor;
+        private float nudge = InputMetrics.TEXT_NUDGE;
         private boolean showCaret = true, editable = true, paintingWithoutCaret;
         private int selectionColor, caretColor;
         private long blinkStart;
@@ -390,7 +395,7 @@ final class InputFields {
             }
             if (!isVisible()) return;
             g.pose().pushPose();
-            g.pose().translate(0, InputMetrics.TEXT_NUDGE, 0);
+            g.pose().translate(0, nudge, 0);
             try { paintText(g); } finally { g.pose().popPose(); }
         }
 

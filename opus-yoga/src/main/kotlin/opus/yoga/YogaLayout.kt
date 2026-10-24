@@ -1,5 +1,6 @@
 package opus.yoga
 
+import opus.core.Absolute
 import opus.core.Align
 import opus.core.AlignItems
 import opus.core.Composition
@@ -10,6 +11,7 @@ import opus.core.FixedSize
 import opus.core.InputMetrics
 import opus.core.InputOptions
 import opus.core.Justify
+import opus.core.MinSize
 import opus.core.JustifyContent
 import opus.core.Padding
 import opus.core.TextRole
@@ -134,6 +136,8 @@ class YogaTree(private val measurer: TextMeasurer) : AutoCloseable {
         }
 
         var flexGrow = 0f
+        var explicitMinW = 0f
+        var explicitMinH = 0f
         var resolvedWidth = availableWidth
         var horizontalPadding = 0f
         for (el in node.modifier.elements()) {
@@ -162,6 +166,17 @@ class YogaTree(private val measurer: TextMeasurer) : AutoCloseable {
                     if (el.heightFraction > 0f) Yoga.YGNodeStyleSetHeightPercent(h, el.heightFraction * 100f)
                 }
                 is Weight -> flexGrow = el.weight
+                is Absolute -> {
+                    Yoga.YGNodeStyleSetPositionType(h, Yoga.YGPositionTypeAbsolute)
+                    el.left?.let { Yoga.YGNodeStyleSetPosition(h, Yoga.YGEdgeLeft, it) }
+                    el.top?.let { Yoga.YGNodeStyleSetPosition(h, Yoga.YGEdgeTop, it) }
+                    el.right?.let { Yoga.YGNodeStyleSetPosition(h, Yoga.YGEdgeRight, it) }
+                    el.bottom?.let { Yoga.YGNodeStyleSetPosition(h, Yoga.YGEdgeBottom, it) }
+                }
+                is MinSize -> {
+                    el.width?.let { explicitMinW = it }
+                    el.height?.let { explicitMinH = it }
+                }
                 is AlignItems -> Yoga.YGNodeStyleSetAlignItems(h, when (el.align) {
                     Align.START -> Yoga.YGAlignFlexStart
                     Align.CENTER -> Yoga.YGAlignCenter
@@ -185,7 +200,10 @@ class YogaTree(private val measurer: TextMeasurer) : AutoCloseable {
         // Structural widgets paint fixed-size visuals; give Yoga matching
         // minimums so measured bounds never underflow the drawn output
         // (which caused section overlap in the showcase).
-        val (minW, minH) = widgetMinSize(node)
+        val (widgetMinW, widgetMinH) = widgetMinSize(node)
+        // An explicit minimum and a widget's own both hold; the larger one wins.
+        val minW = maxOf(widgetMinW, explicitMinW)
+        val minH = maxOf(widgetMinH, explicitMinH)
         if (minW > 0f) Yoga.YGNodeStyleSetMinWidth(h, minW)
         if (minH > 0f) Yoga.YGNodeStyleSetMinHeight(h, minH)
         // Cross-axis stretch (e.g. Switch in a Column) would inflate visuals
@@ -209,7 +227,7 @@ class YogaTree(private val measurer: TextMeasurer) : AutoCloseable {
                 val available = if (widthMode == Yoga.YGMeasureModeUndefined) 180f else width.coerceAtLeast(1f)
                 out.width(available)
                 // An open DateField calendar floats like a dropdown menu and takes no space.
-                out.height(InputMetrics.LABEL_HEIGHT + InputMetrics.fieldHeight(rows) +
+                out.height(InputMetrics.labelHeight(node.props["label"] as? String) + InputMetrics.fieldHeight(rows, options.dense) +
                     if (support.isNotEmpty()) 5f + measurer.wrappedHeight(support, available) else 0f)
             }
         } else if (node.children.isEmpty() && node.type in leafMeasuredTypes) {
@@ -254,7 +272,8 @@ class YogaTree(private val measurer: TextMeasurer) : AutoCloseable {
     private fun widgetMinSize(node: UiNode): Pair<Float, Float> {
         if (isTextInput(node)) {
             val options = node.props["inputOptions"] as? InputOptions ?: InputOptions()
-            return 40f to InputMetrics.height(node.props["rows"] as? Int ?: 1, options)
+            return 40f to InputMetrics.height(node.props["rows"] as? Int ?: 1, options,
+                InputMetrics.labelHeight(node.props["label"] as? String) > 0f)
         }
         fun optCount(): Int = (node.props["options"] as? List<*>)?.size ?: 0
         return when (node.type) {

@@ -15,6 +15,8 @@ import opus.core.paddingEach
 import opus.core.setContent
 import opus.core.weight
 import opus.core.alignItems
+import opus.core.minHeight
+import opus.core.absolute
 import opus.core.justifyContent
 import opus.core.width
 import kotlin.test.Test
@@ -28,6 +30,43 @@ private val fakeMeasurer = object : TextMeasurer {
 }
 
 class YogaLayoutTest {
+    @Test fun absoluteNodesLayOverSiblingsWithoutTakingSpace() {
+        val c = setContent {
+            Column(Modifier.width(200f)) {
+                Text("Flow")
+                opus.core.Box(Modifier.absolute(left = 10f, top = 0f, right = 10f, bottom = 0f)) {}
+                Text("Still flows")
+            }
+        }
+        YogaTree(fakeMeasurer).use { tree ->
+            tree.layout(c.root, c, 400f, 400f)
+            val (first, overlay, second) = c.root.children.single().children
+            assertEquals(first.height, second.y, 0.01f)
+            assertEquals(10f, overlay.x, 0.01f)
+            assertEquals(180f, overlay.width, 0.01f)
+            assertEquals(c.root.children.single().height, overlay.height, 0.01f)
+        }
+        c.close()
+    }
+
+    @Test fun minimumHeightHoldsButStillStretchesWithTallerSiblings() {
+        val tall = opus.core.mutableStateOf(50f)
+        val c = setContent {
+            Row(Modifier.width(200f)) {
+                opus.core.Box(Modifier.width(40f).minHeight(120f)) {}
+                opus.core.Box(Modifier.width(40f).height(tall.value)) {}
+            }
+        }
+        YogaTree(fakeMeasurer).use { tree ->
+            tree.layout(c.root, c, 400f, 400f)
+            assertEquals(120f, c.root.children.single().children[0].height, 0.01f)
+            tall.value = 300f
+            tree.layout(c.root, c, 400f, 400f)
+            assertEquals(300f, c.root.children.single().children[0].height, 0.01f)
+        }
+        c.close()
+    }
+
     @Test fun alignmentCentersTheCrossAxisAndDistributesTheMainAxis() {
         val c = setContent {
             Row(Modifier.width(200f).height(40f).alignItems(opus.core.Align.CENTER)

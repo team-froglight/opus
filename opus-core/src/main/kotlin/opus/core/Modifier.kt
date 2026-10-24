@@ -54,6 +54,13 @@ fun Modifier.elements(): List<Modifier.Element> {
 
 data class Padding(val start: Float = 0f, val top: Float = 0f, val end: Float = 0f, val bottom: Float = 0f) : Modifier.Element
 data class FixedSize(val width: Float? = null, val height: Float? = null) : Modifier.Element
+/** A floor on the node's size; it may still grow, for example by stretching across its parent. */
+data class MinSize(val width: Float? = null, val height: Float? = null) : Modifier.Element
+/**
+ * Takes the node out of its parent's flow and pins its edges to the given insets, so it is laid over
+ * its siblings: later nodes draw on top and receive clicks first. Null insets are left free.
+ */
+data class Absolute(val left: Float? = null, val top: Float? = null, val right: Float? = null, val bottom: Float? = null) : Modifier.Element
 data class FillMax(val widthFraction: Float = 0f, val heightFraction: Float = 0f) : Modifier.Element
 data class Weight(val weight: Float) : Modifier.Element
 data class Offset(val x: Float, val y: Float) : Modifier.Element
@@ -74,6 +81,11 @@ fun Modifier.paddingEach(start: Float = 0f, top: Float = 0f, end: Float = 0f, bo
 fun Modifier.size(width: Float, height: Float): Modifier = then(FixedSize(width, height))
 fun Modifier.width(width: Float): Modifier = then(FixedSize(width = width))
 fun Modifier.height(height: Float): Modifier = then(FixedSize(height = height))
+fun Modifier.minWidth(width: Float): Modifier = then(MinSize(width = width))
+fun Modifier.minHeight(height: Float): Modifier = then(MinSize(height = height))
+@JvmOverloads
+fun Modifier.absolute(left: Float? = null, top: Float? = null, right: Float? = null, bottom: Float? = null): Modifier =
+    then(Absolute(left, top, right, bottom))
 @JvmOverloads
 fun Modifier.fillMaxWidth(fraction: Float = 1f): Modifier = then(FillMax(widthFraction = fraction))
 @JvmOverloads
@@ -132,3 +144,11 @@ fun Modifier.cutout(kind: CutoutKind = CutoutKind.NOTCH_TOP, size: Float = 16f):
 data class Clickable(val onClick: () -> Unit) : Modifier.Element
 
 fun Modifier.clickable(onClick: () -> Unit): Modifier = then(Clickable(onClick))
+
+/**
+ * Receives mouse-wheel input over the node, in wheel steps (positive scrolls content up). The innermost
+ * scrollable node under the pointer consumes the wheel, so a panel can scroll without moving the screen.
+ */
+data class Scrollable(val onScroll: (Float) -> Unit) : Modifier.Element
+
+fun Modifier.onScroll(onScroll: (Float) -> Unit): Modifier = then(Scrollable(onScroll))

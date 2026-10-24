@@ -772,7 +772,19 @@ public class UiRenderer implements AutoCloseable {
         ensureLayout(composition);
         // Wheel input over a floating menu must not scroll a text area hidden underneath it.
         if (overlayAt(x, y + scroll) != null) return false;
-        return inputs.scroll(x, y + scroll, dx, dy);
+        if (inputs.scroll(x, y + scroll, dx, dy)) return true;
+        if (visuals == null) return false;
+        // The innermost scrollable node under the pointer takes the wheel instead of the screen.
+        for (UiNode node : visuals.hitPath((float) x, (float) (y + scroll))) {
+            if (!visuals.bounds(node).getInputEnabled()) return false;
+            for (Modifier.Element element : Modifiers.elements(node.getModifier())) {
+                if (element instanceof opus.core.Scrollable scrollable) {
+                    scrollable.getOnScroll().invoke((float) dy);
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     /** Escape closes open menus and calendars first, then popups, before the host closes the screen. */

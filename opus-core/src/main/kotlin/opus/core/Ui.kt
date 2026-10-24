@@ -38,6 +38,7 @@ object Ui {
         modifier.animateChanges(durationMillis, easing)
     @JvmStatic fun compose(content: Runnable): Composition = setContent { content.run() }
     @JvmStatic fun clickable(modifier: Modifier, onClick: Runnable): Modifier = modifier.clickable { onClick.run() }
+    @JvmStatic fun onScroll(modifier: Modifier, onScroll: Consumer<Float>): Modifier = modifier.onScroll { onScroll.accept(it) }
     @JvmStatic fun <T> state(initial: T): MutableState<T> = mutableStateOf(initial)
     @JvmStatic fun <T> remember(factory: Supplier<T>): T = opus.core.remember { factory.get() }
     @JvmStatic @JvmOverloads
